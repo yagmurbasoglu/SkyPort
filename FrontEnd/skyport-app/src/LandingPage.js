@@ -1,6 +1,8 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const LandingPage = () => {
+  const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-[#0a0f1a] text-white flex flex-col font-sans">
       {/* NAVBAR */}
@@ -41,7 +43,10 @@ const LandingPage = () => {
         </p>
 
         {/* Başlat Butonu */}
-        <button className="group flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-4 rounded-md text-lg font-bold transition-all transform hover:scale-105">
+        <button
+          onClick={() => navigate('/map')}
+          className="group flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-4 rounded-md text-lg font-bold transition-all transform hover:scale-105"
+        >
           <span className="text-xl">▶</span> Start Analysis
         </button>
       </main>

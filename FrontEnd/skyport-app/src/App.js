@@ -1,12 +1,21 @@
-
 import React from 'react';
-import LandingPage from './LandingPage'; // Yeni dosyayı içeri aldık
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { ThemeProvider, CssBaseline } from '@mui/material';
+import theme from './theme';
+import LandingPage from './LandingPage';
+import MapPage from './pages/MapPage';
 
 function App() {
   return (
-    <div className="App">
-      <LandingPage />
-    </div>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Router>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/map" element={<MapPage />} />
+        </Routes>
+      </Router>
+    </ThemeProvider>
   );
 }
 

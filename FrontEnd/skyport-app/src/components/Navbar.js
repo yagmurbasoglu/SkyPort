@@ -1,0 +1,133 @@
+import React from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Box, Typography, Button, Chip } from '@mui/material';
+import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
+import MapIcon from '@mui/icons-material/Map';
+import HomeIcon from '@mui/icons-material/Home';
+
+const Navbar = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isMap = location.pathname === '/map';
+
+  return (
+    <Box
+      component="nav"
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        px: 3,
+        py: 1.5,
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(10, 15, 26, 0.95)',
+        backdropFilter: 'blur(10px)',
+        zIndex: 100,
+        flexShrink: 0,
+      }}
+    >
+      {/* Logo */}
+      <Box
+        sx={{ display: 'flex', alignItems: 'center', gap: 1.5, cursor: 'pointer' }}
+        onClick={() => navigate('/')}
+      >
+        <Box
+          sx={{
+            width: 32,
+            height: 32,
+            background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 0 16px rgba(59,130,246,0.4)',
+          }}
+        >
+          <FlightTakeoffIcon sx={{ fontSize: 18, color: '#fff' }} />
+        </Box>
+        <Typography
+          sx={{
+            fontWeight: 800,
+            fontSize: '1.1rem',
+            letterSpacing: '-0.5px',
+            background: 'linear-gradient(135deg, #e2e8f0, #94a3b8)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}
+        >
+          SKY<span style={{ color: '#3b82f6', WebkitTextFillColor: '#3b82f6' }}>PORT</span>
+        </Typography>
+        <Chip
+          label="Istanbul UAM"
+          size="small"
+          sx={{
+            height: 20,
+            fontSize: '0.62rem',
+            background: 'rgba(59,130,246,0.12)',
+            border: '1px solid rgba(59,130,246,0.3)',
+            color: '#60a5fa',
+            letterSpacing: '0.05em',
+          }}
+        />
+      </Box>
+
+      {/* Right side */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mr: 1 }}>
+          <Box
+            sx={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              bgcolor: '#22c55e',
+              boxShadow: '0 0 8px #22c55e',
+              animation: 'pulse 2s infinite',
+              '@keyframes pulse': {
+                '0%, 100%': { opacity: 1 },
+                '50%': { opacity: 0.4 },
+              },
+            }}
+          />
+          <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.68rem' }}>
+            System Online
+          </Typography>
+        </Box>
+
+        {isMap ? (
+          <Button
+            startIcon={<HomeIcon />}
+            onClick={() => navigate('/')}
+            size="small"
+            sx={{
+              color: '#94a3b8',
+              textTransform: 'none',
+              fontSize: '0.78rem',
+              '&:hover': { color: '#e2e8f0', background: 'rgba(255,255,255,0.05)' },
+            }}
+          >
+            Home
+          </Button>
+        ) : (
+          <Button
+            startIcon={<MapIcon />}
+            onClick={() => navigate('/map')}
+            size="small"
+            variant="contained"
+            sx={{
+              textTransform: 'none',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              boxShadow: '0 4px 14px rgba(59,130,246,0.35)',
+              '&:hover': { boxShadow: '0 4px 20px rgba(59,130,246,0.5)' },
+            }}
+          >
+            Launch Analysis
+          </Button>
+        )}
+      </Box>
+    </Box>
+  );
+};
+
+export default Navbar;

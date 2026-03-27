@@ -14,8 +14,8 @@ const LandingPage = () => {
           <span className="text-xl font-bold tracking-tighter italic">SKY PORT</span>
         </div>
         <div className="flex gap-4">
-          <button className="px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 transition">Login</button>
-          <button className="px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 transition">Register</button>
+          <button onClick={() => navigate('/auth')} className="px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 transition">Login</button>
+          <button onClick={() => navigate('/auth')} className="px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 transition">Register</button>
         </div>
       </nav>
 
@@ -42,13 +42,21 @@ const LandingPage = () => {
           Istanbul's next-generation air taxi network.
         </p>
 
-        {/* Başlat Butonu */}
-        <button
-          onClick={() => navigate('/map')}
-          className="group flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-4 rounded-md text-lg font-bold transition-all transform hover:scale-105"
-        >
-          <span className="text-xl">▶</span> Start Analysis
-        </button>
+        {/* CTA Buttons */}
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          <button
+            onClick={() => navigate('/auth')}
+            className="group flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-4 rounded-md text-lg font-bold transition-all transform hover:scale-105"
+          >
+            <span className="text-xl">⬡</span> Start Analysis
+          </button>
+          <button
+            onClick={() => navigate('/passenger')}
+            className="group flex items-center gap-2 border border-purple-500 text-purple-400 hover:bg-purple-500/20 px-8 py-4 rounded-md text-lg font-bold transition-all transform hover:scale-105"
+          >
+            <span className="text-xl">✈</span> Launch Navigation
+          </button>
+        </div>
       </main>
     </div>
   );

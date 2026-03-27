@@ -2,19 +2,28 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import theme from './theme';
+import { AuthProvider } from './context/AuthContext';
 import LandingPage from './LandingPage';
+import AuthPage from './pages/AuthPage';
 import MapPage from './pages/MapPage';
+import PassengerPage from './pages/PassengerPage';
 
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/map" element={<MapPage />} />
-        </Routes>
-      </Router>
+      <AuthProvider>
+        <Router>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/auth" element={<AuthPage />} />
+            <Route path="/map" element={<MapPage />} />
+            <Route path="/passenger" element={<PassengerPage />} />
+            {/* TODO: Add analyst route when Expert Dashboard is built */}
+            {/* <Route path="/expert" element={<ExpertPage />} /> */}
+          </Routes>
+        </Router>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

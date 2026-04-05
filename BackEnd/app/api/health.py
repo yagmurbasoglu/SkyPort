@@ -26,4 +26,3 @@ async def live() -> HealthResponse:
 @router.get("/ready", response_model=HealthResponse)
 async def ready() -> HealthResponse:
     return _health_payload()
-

@@ -12,4 +12,3 @@ def configure_logging() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
         force=True,
     )
-

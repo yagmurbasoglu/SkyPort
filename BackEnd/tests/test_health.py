@@ -32,4 +32,3 @@ def test_health_response_contains_expected_fields() -> None:
 def test_unknown_health_route_returns_404() -> None:
     response = client.get("/health/unknown")
     assert response.status_code == 404
-

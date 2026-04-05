@@ -36,4 +36,3 @@ async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONRespons
             details={"error_type": exc.__class__.__name__},
         ),
     )
-

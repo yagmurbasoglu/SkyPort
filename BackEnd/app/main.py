@@ -5,6 +5,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI, HTTPException
 
 from app.api.health import router as health_router
+from app.api.routes import auth, users
 from app.core.config import get_settings
 from app.core.errors import http_exception_handler, unhandled_exception_handler
 from app.core.logging import configure_logging
@@ -30,6 +31,8 @@ def create_app() -> FastAPI:
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
     app.include_router(health_router)
+    app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+    app.include_router(users.router, prefix="/api/users", tags=["users"])
 
     @app.get("/", tags=["system"])
     async def root() -> dict[str, str]:

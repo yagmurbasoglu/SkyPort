@@ -42,12 +42,19 @@ def _to_multipolygon_wkt(geometry_payload: dict) -> str | None:
     return None
 
 
-def import_controlled_airspace(path: Path, source: str, source_version: str | None, replace_source: bool) -> tuple[int, int]:
+def import_controlled_airspace(
+    path: Path,
+    source: str,
+    source_version: str | None,
+    replace_source: bool,
+    mirror_to_nfz: bool,
+) -> tuple[int, int, int]:
     engine = _get_engine()
     raw = json.loads(path.read_text(encoding="utf-8"))
     features = raw.get("features", [])
     inserted = 0
     skipped = 0
+    mirrored = 0
 
     with engine.begin() as conn:
         if replace_source:
@@ -55,6 +62,11 @@ def import_controlled_airspace(path: Path, source: str, source_version: str | No
                 text("DELETE FROM public.controlled_airspace_zones WHERE source = :source"),
                 {"source": source},
             )
+            if mirror_to_nfz:
+                conn.execute(
+                    text("DELETE FROM public.nfz_zones WHERE source = :source"),
+                    {"source": source},
+                )
 
         for feature in features:
             properties = feature.get("properties", {})
@@ -115,9 +127,58 @@ def import_controlled_airspace(path: Path, source: str, source_version: str | No
                     "geom_wkt": geom_wkt,
                 },
             )
+            if mirror_to_nfz:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO public.nfz_zones (
+                            source,
+                            source_version,
+                            zone_code,
+                            zone_name,
+                            zone_type,
+                            lower_limit,
+                            upper_limit,
+                            effective_from,
+                            effective_to,
+                            last_synced_at,
+                            is_active,
+                            geom
+                        )
+                        VALUES (
+                            :source,
+                            :source_version,
+                            :zone_code,
+                            :zone_name,
+                            :zone_type,
+                            :lower_limit,
+                            :upper_limit,
+                            :effective_from,
+                            :effective_to,
+                            now(),
+                            :is_active,
+                            ST_GeomFromText(:geom_wkt, 4326)
+                        )
+                        """
+                    ),
+                    {
+                        "source": source,
+                        "source_version": source_version,
+                        "zone_code": properties.get("zone_code"),
+                        "zone_name": properties.get("zone_name"),
+                        "zone_type": "CONTROLLED_AIRSPACE",
+                        "lower_limit": properties.get("lower_limit"),
+                        "upper_limit": properties.get("upper_limit"),
+                        "effective_from": properties.get("effective_from"),
+                        "effective_to": properties.get("effective_to"),
+                        "is_active": properties.get("is_active", True),
+                        "geom_wkt": geom_wkt,
+                    },
+                )
+                mirrored += 1
             inserted += 1
 
-    return inserted, skipped
+    return inserted, skipped, mirrored
 
 
 def main() -> None:
@@ -130,21 +191,28 @@ def main() -> None:
         default="CONTROLLED_AIRSPACE",
         help="Source key for controlled airspace polygons.",
     )
+    parser.add_argument(
+        "--no-mirror-to-nfz",
+        action="store_true",
+        help="Do not mirror controlled airspace polygons into nfz_zones.",
+    )
     args = parser.parse_args()
 
     path = Path(args.file)
     if not path.exists():
         raise SystemExit(f"File not found: {path}")
 
-    inserted, skipped = import_controlled_airspace(
+    inserted, skipped, mirrored = import_controlled_airspace(
         path=path,
         source=args.source,
         source_version=args.source_version,
         replace_source=args.replace_source,
+        mirror_to_nfz=not args.no_mirror_to_nfz,
     )
     print(
         "Controlled airspace import completed. "
-        f"inserted={inserted}, skipped={skipped}, source={args.source}, source_version={args.source_version}"
+        f"inserted_controlled={inserted}, mirrored_nfz={mirrored}, skipped={skipped}, "
+        f"source={args.source}, source_version={args.source_version}"
     )
 
 

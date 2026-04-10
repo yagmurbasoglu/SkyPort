@@ -4,13 +4,19 @@ from threading import Thread
 from uuid import uuid4
 
 from fastapi import HTTPException
+from shapely.geometry import mapping
 
 from app.repos import geodata_repo
 from app.repos.controlled_airspace_repo import (
     get_controlled_airspace_health,
+    list_controlled_airspace_geojson_in_bbox,
     list_controlled_airspace_in_bbox,
 )
-from app.repos.nfz_repo import get_nfz_source_health, list_nfz_in_bbox
+from app.repos.nfz_repo import (
+    get_nfz_source_health,
+    list_nfz_geojson_in_bbox,
+    list_nfz_in_bbox,
+)
 from app.schemas.geodata import BoundingBox, IngestRequest
 
 try:
@@ -54,14 +60,14 @@ def _validate_bbox(req: IngestRequest) -> None:
 
 
 def _derive_status(warnings: list[str], layer_counts: dict[str, int]) -> str:
-    osm_total = (
+    # Controlled airspace is advisory-only and should not drive job success/failure.
+    core_total = (
         layer_counts.get("buildings", 0)
         + layer_counts.get("roads", 0)
         + layer_counts.get("land_use", 0)
         + layer_counts.get("nfz", 0)
-        + layer_counts.get("controlled_airspace", 0)
     )
-    if osm_total == 0:
+    if core_total == 0:
         return "failed"
     if warnings:
         return "partial_success"
@@ -189,6 +195,64 @@ def _feature_count(features) -> int:
     return len(features)
 
 
+def _safe_scalar(value):
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return str(value)
+
+
+def _serialize_geo_features(features, max_features: int = 200) -> dict:
+    if features is None:
+        return {"type": "FeatureCollection", "features": [], "total": 0, "truncated": False}
+    if hasattr(features, "empty") and features.empty:
+        return {"type": "FeatureCollection", "features": [], "total": 0, "truncated": False}
+    if not hasattr(features, "head") or not hasattr(features, "iterrows"):
+        total = len(features) if hasattr(features, "__len__") else 0
+        return {
+            "type": "FeatureCollection",
+            "features": [],
+            "total": int(total),
+            "truncated": False,
+        }
+
+    records: list[dict] = []
+    total = len(features)
+    limit = min(total, max_features)
+    columns = [col for col in features.columns if col != "geometry"] if hasattr(features, "columns") else []
+    prop_cols = columns[:8]
+
+    for _, row in features.head(limit).iterrows():
+        geom = row.get("geometry")
+        if geom is None:
+            continue
+        properties = {col: _safe_scalar(row.get(col)) for col in prop_cols}
+        records.append(
+            {
+                "type": "Feature",
+                "geometry": mapping(geom),
+                "properties": properties,
+            }
+        )
+
+    return {
+        "type": "FeatureCollection",
+        "features": records,
+        "total": int(total),
+        "truncated": total > max_features,
+    }
+
+
+def _serialize_layer_records(records: list[dict] | None, max_items: int = 500) -> dict:
+    if not records:
+        return {"items": [], "total": 0, "truncated": False}
+    total = len(records)
+    return {
+        "items": records[:max_items],
+        "total": total,
+        "truncated": total > max_items,
+    }
+
+
 def generate_h3_grid(bbox: BoundingBox, resolution: int) -> list[str]:
     if h3 is None:
         raise RuntimeError("h3 is not installed")
@@ -232,6 +296,10 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
         for layer in ("buildings", "roads", "land_use"):
             if layer_counts[layer] == 0:
                 warnings.append(f"{layer} layer is empty.")
+        if layer_counts["controlled_airspace"] > 0:
+            warnings.append(
+                "Controlled airspace intersects selected area (advisory only, not an automatic no-fly block)."
+            )
 
         try:
             h3_cells = generate_h3_grid(req.bounding_box, req.h3_resolution)
@@ -239,6 +307,14 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
         except Exception as exc:
             layer_counts["h3_cells"] = 0
             warnings.append(f"H3 generation failed: {exc.__class__.__name__}")
+
+        extracted_layers = {
+            "buildings": _serialize_geo_features(buildings),
+            "roads": _serialize_geo_features(roads),
+            "land_use": _serialize_geo_features(land_use),
+            "nfz": _serialize_layer_records(nfz),
+            "controlled_airspace": _serialize_layer_records(controlled_airspace),
+        }
 
         status = _derive_status(warnings=warnings, layer_counts=layer_counts)
         finished_at = datetime.now(timezone.utc)
@@ -248,6 +324,7 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
                 "status": status,
                 "warnings": warnings,
                 "layer_counts": layer_counts,
+                "extracted_layers": extracted_layers,
                 "started_at": started_at,
                 "finished_at": finished_at,
                 "h3_cells": h3_cells,
@@ -268,6 +345,7 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
                     "controlled_airspace": 0,
                     "h3_cells": 0,
                 },
+                "extracted_layers": {},
                 "started_at": started_at,
                 "finished_at": finished_at,
                 "h3_cells": [],
@@ -296,6 +374,7 @@ def submit_ingest(req: IngestRequest) -> dict:
         "status": "running",
         "warnings": [],
         "layer_counts": {},
+        "extracted_layers": {},
         "started_at": started_at,
         "finished_at": None,
         "updated_at": started_at,
@@ -313,3 +392,19 @@ def get_status(job_id: str) -> dict:
             detail={"code": "JOB_NOT_FOUND", "message": "Ingestion job not found."},
         )
     return job
+
+
+def get_airspace_overlay(bbox: BoundingBox) -> dict:
+    nfz_features = list_nfz_geojson_in_bbox(bbox)
+    controlled_features = list_controlled_airspace_geojson_in_bbox(bbox)
+    features = [*nfz_features, *controlled_features]
+
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "summary": {
+            "nfz": len(nfz_features),
+            "controlled_airspace": len(controlled_features),
+            "total": len(features),
+        },
+    }

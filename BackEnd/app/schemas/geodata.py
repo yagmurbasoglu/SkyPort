@@ -33,3 +33,9 @@ class IngestStatusResponse(BaseModel):
     layer_counts: dict[str, int]
     started_at: datetime
     finished_at: datetime | None
+
+
+class AirspaceOverlayResponse(BaseModel):
+    type: Literal["FeatureCollection"]
+    features: list[dict]
+    summary: dict[str, int]

@@ -17,6 +17,7 @@ class GeodataIngestJob(Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False)
     warnings: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     layer_counts: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    extracted_layers: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(

@@ -1,0 +1,142 @@
+from fastapi.testclient import TestClient
+import pytest
+
+from app.main import app
+from app.services import geodata_service
+
+client = TestClient(app)
+
+
+def _valid_payload() -> dict:
+    return {
+        "region_name": "Istanbul Test",
+        "h3_resolution": 8,
+        "bounding_box": {
+            "west": 28.95,
+            "east": 28.99,
+            "south": 41.00,
+            "north": 41.03,
+        },
+    }
+
+
+@pytest.fixture(autouse=True)
+def _in_memory_job_repo(monkeypatch):
+    jobs: dict[str, dict] = {}
+
+    def create_job(job_id: str, payload: dict) -> dict:
+        jobs[job_id] = dict(payload)
+        return dict(jobs[job_id])
+
+    def update_job(job_id: str, patch: dict) -> dict | None:
+        current = jobs.get(job_id)
+        if current is None:
+            return None
+        current.update({k: v for k, v in patch.items() if k != "h3_cells"})
+        return dict(current)
+
+    def get_job(job_id: str) -> dict | None:
+        current = jobs.get(job_id)
+        if current is None:
+            return None
+        return dict(current)
+
+    monkeypatch.setattr(geodata_service.geodata_repo, "create_job", create_job)
+    monkeypatch.setattr(geodata_service.geodata_repo, "update_job", update_job)
+    monkeypatch.setattr(geodata_service.geodata_repo, "get_job", get_job)
+
+
+def test_ingest_returns_job_payload(monkeypatch) -> None:
+    monkeypatch.setattr(
+        geodata_service,
+        "_start_worker",
+        lambda **_kwargs: None,
+    )
+
+    response = client.post("/api/geodata/ingest", json=_valid_payload())
+    assert response.status_code == 200
+    body = response.json()
+
+    assert "job_id" in body and body["job_id"]
+    assert body["status"] == "running"
+    assert "layer_counts" in body
+    assert body["layer_counts"] == {}
+
+
+def test_invalid_bbox_returns_400() -> None:
+    payload = _valid_payload()
+    payload["bounding_box"]["west"] = 29.3
+    payload["bounding_box"]["east"] = 29.2
+
+    response = client.post("/api/geodata/ingest", json=payload)
+    assert response.status_code == 400
+    body = response.json()
+    assert body["code"] == "INVALID_BBOX"
+
+
+def test_too_large_bbox_returns_400() -> None:
+    payload = _valid_payload()
+    payload["bounding_box"] = {
+        "west": 28.0,
+        "east": 29.8,
+        "south": 40.6,
+        "north": 41.6,
+    }
+
+    response = client.post("/api/geodata/ingest", json=payload)
+    assert response.status_code == 400
+    body = response.json()
+    assert body["code"] == "BBOX_TOO_LARGE"
+
+
+def test_missing_layers_returns_partial_success(monkeypatch) -> None:
+    monkeypatch.setattr(
+        geodata_service,
+        "extract_osm_data",
+        lambda _bbox: (
+            {"buildings": [], "roads": [1], "land_use": [], "nfz": []},
+            [],
+        ),
+    )
+    monkeypatch.setattr(geodata_service, "clean_and_transform", lambda features: features)
+    monkeypatch.setattr(geodata_service, "generate_h3_grid", lambda _bbox, _res: ["x"])
+
+    def run_inline(job_id: str, req_data: dict) -> None:
+        geodata_service._run_ingest_job(job_id, req_data)
+
+    monkeypatch.setattr(geodata_service, "_start_worker", run_inline)
+
+    created = client.post("/api/geodata/ingest", json=_valid_payload())
+    assert created.status_code == 200
+    job_id = created.json()["job_id"]
+
+    status = client.get(f"/api/geodata/ingest/{job_id}")
+    assert status.status_code == 200
+    assert status.json()["status"] == "partial_success"
+
+
+def test_get_ingest_status_returns_saved_job(monkeypatch) -> None:
+    monkeypatch.setattr(
+        geodata_service,
+        "extract_osm_data",
+        lambda _bbox: (
+            {"buildings": [1], "roads": [1], "land_use": [1], "nfz": []},
+            [],
+        ),
+    )
+    monkeypatch.setattr(geodata_service, "clean_and_transform", lambda features: features)
+    monkeypatch.setattr(geodata_service, "generate_h3_grid", lambda _bbox, _res: ["c1", "c2"])
+
+    def run_inline(job_id: str, req_data: dict) -> None:
+        geodata_service._run_ingest_job(job_id, req_data)
+
+    monkeypatch.setattr(geodata_service, "_start_worker", run_inline)
+
+    created = client.post("/api/geodata/ingest", json=_valid_payload())
+    job_id = created.json()["job_id"]
+
+    response = client.get(f"/api/geodata/ingest/{job_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["job_id"] == job_id
+    assert body["status"] in {"success", "partial_success", "failed", "running"}

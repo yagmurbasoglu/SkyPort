@@ -26,6 +26,8 @@ def test_core_tables_exist() -> None:
         "analysis_results",
         "routes",
         "reports",
+        "geodata_ingest_jobs",
+        "geodata_h3_cells",
     }
 
     with engine.connect() as conn:
@@ -112,4 +114,3 @@ def test_vertiports_crud_smoke() -> None:
             {"id": vertiport_id},
         ).scalar_one_or_none()
         assert deleted is None
-

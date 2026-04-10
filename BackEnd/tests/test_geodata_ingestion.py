@@ -140,3 +140,26 @@ def test_get_ingest_status_returns_saved_job(monkeypatch) -> None:
     body = response.json()
     assert body["job_id"] == job_id
     assert body["status"] in {"success", "partial_success", "failed", "running"}
+
+
+def test_extract_osm_data_warns_when_notam_overlay_missing(monkeypatch) -> None:
+    bbox = geodata_service.BoundingBox(west=29.0, east=29.02, south=41.035, north=41.05)
+
+    monkeypatch.setattr(geodata_service, "_extract_features", lambda _tags, _bbox: [])
+    monkeypatch.setattr(geodata_service, "_extract_roads", lambda _bbox: [])
+    monkeypatch.setattr(geodata_service, "list_nfz_in_bbox", lambda _bbox: [])
+    monkeypatch.setattr(geodata_service, "list_controlled_airspace_in_bbox", lambda _bbox: [])
+    monkeypatch.setattr(
+        geodata_service,
+        "get_nfz_source_health",
+        lambda: {"aip_active": 1, "notam_active": 0},
+    )
+    monkeypatch.setattr(
+        geodata_service,
+        "get_controlled_airspace_health",
+        lambda: {"controlled_active": 0},
+    )
+
+    _data, warnings = geodata_service.extract_osm_data(bbox)
+    assert "NFZ NOTAM overlay is not loaded." in warnings
+    assert "Controlled airspace layer is not loaded." in warnings

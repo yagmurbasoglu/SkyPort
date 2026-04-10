@@ -28,6 +28,8 @@ def test_core_tables_exist() -> None:
         "reports",
         "geodata_ingest_jobs",
         "geodata_h3_cells",
+        "nfz_zones",
+        "controlled_airspace_zones",
     }
 
     with engine.connect() as conn:

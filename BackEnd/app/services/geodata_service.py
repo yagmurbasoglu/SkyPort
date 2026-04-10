@@ -6,6 +6,11 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app.repos import geodata_repo
+from app.repos.controlled_airspace_repo import (
+    get_controlled_airspace_health,
+    list_controlled_airspace_in_bbox,
+)
+from app.repos.nfz_repo import get_nfz_source_health, list_nfz_in_bbox
 from app.schemas.geodata import BoundingBox, IngestRequest
 
 try:
@@ -54,6 +59,7 @@ def _derive_status(warnings: list[str], layer_counts: dict[str, int]) -> str:
         + layer_counts.get("roads", 0)
         + layer_counts.get("land_use", 0)
         + layer_counts.get("nfz", 0)
+        + layer_counts.get("controlled_airspace", 0)
     )
     if osm_total == 0:
         return "failed"
@@ -111,7 +117,13 @@ def _extract_roads(bbox: BoundingBox):
 
 def extract_osm_data(bbox: BoundingBox) -> tuple[dict, list[str]]:
     warnings: list[str] = []
-    data = {"buildings": None, "roads": None, "land_use": None, "nfz": None}
+    data = {
+        "buildings": None,
+        "roads": None,
+        "land_use": None,
+        "nfz": None,
+        "controlled_airspace": None,
+    }
 
     try:
         data["buildings"] = _extract_features({"building": True}, bbox)
@@ -128,8 +140,23 @@ def extract_osm_data(bbox: BoundingBox) -> tuple[dict, list[str]]:
     except Exception as exc:
         warnings.append(f"Land-use layer unavailable: {exc.__class__.__name__}")
 
-    # NFZ source is not integrated yet in this phase.
-    warnings.append("NFZ source is not configured yet.")
+    try:
+        data["nfz"] = list_nfz_in_bbox(bbox)
+        health = get_nfz_source_health()
+        if health.get("aip_active", 0) == 0:
+            warnings.append("NFZ AIP baseline is not loaded.")
+        if health.get("notam_active", 0) == 0:
+            warnings.append("NFZ NOTAM overlay is not loaded.")
+    except Exception as exc:
+        warnings.append(f"NFZ layer unavailable: {exc.__class__.__name__}")
+
+    try:
+        data["controlled_airspace"] = list_controlled_airspace_in_bbox(bbox)
+        controlled_health = get_controlled_airspace_health()
+        if controlled_health.get("controlled_active", 0) == 0:
+            warnings.append("Controlled airspace layer is not loaded.")
+    except Exception as exc:
+        warnings.append(f"Controlled airspace layer unavailable: {exc.__class__.__name__}")
 
     return data, warnings
 
@@ -192,13 +219,15 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
         buildings = clean_and_transform(osm_data.get("buildings"))
         roads = clean_and_transform(osm_data.get("roads"))
         land_use = clean_and_transform(osm_data.get("land_use"))
-        nfz = clean_and_transform(osm_data.get("nfz"))
+        nfz = osm_data.get("nfz")
+        controlled_airspace = osm_data.get("controlled_airspace")
 
         layer_counts = {
             "buildings": _feature_count(buildings),
             "roads": _feature_count(roads),
             "land_use": _feature_count(land_use),
             "nfz": _feature_count(nfz),
+            "controlled_airspace": _feature_count(controlled_airspace),
         }
         for layer in ("buildings", "roads", "land_use"):
             if layer_counts[layer] == 0:
@@ -236,6 +265,7 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
                     "roads": 0,
                     "land_use": 0,
                     "nfz": 0,
+                    "controlled_airspace": 0,
                     "h3_cells": 0,
                 },
                 "started_at": started_at,

@@ -24,15 +24,31 @@ def create_app() -> FastAPI:
     configure_logging()
     settings = get_settings()
 
+    from fastapi.middleware.cors import CORSMiddleware
     app = FastAPI(
         title=settings.app_name,
         lifespan=lifespan,
     )
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Allows all origins
+        allow_credentials=True,
+        allow_methods=["*"],  # Allows all methods
+        allow_headers=["*"],  # Allows all headers
+    )
+    
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
     app.include_router(health_router)
     app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
     app.include_router(users.router, prefix="/api/users", tags=["users"])
+    
+    from app.api.routes.geodata import router as geodata_router
+    app.include_router(geodata_router, prefix="/api/geodata", tags=["geodata"])
+    
+    from app.api.routes.analysis import router as analysis_router
+    app.include_router(analysis_router, prefix="/api/analysis", tags=["analysis"])
 
     @app.get("/", tags=["system"])
     async def root() -> dict[str, str]:

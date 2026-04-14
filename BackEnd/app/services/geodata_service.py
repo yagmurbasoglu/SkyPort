@@ -1,11 +1,14 @@
 from datetime import datetime, timezone
-from math import cos, pi
+from decimal import Decimal
+from math import cos, isfinite, pi
+from numbers import Real
 from threading import Thread
 from uuid import uuid4
 
 from fastapi import HTTPException
 from shapely.geometry import mapping
 
+from app.core.config import get_settings
 from app.repos import geodata_repo
 from app.repos.controlled_airspace_repo import (
     get_controlled_airspace_health,
@@ -29,8 +32,17 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - environment-dependent
     ox = None
 else:
-    ox.settings.use_cache = True
-    ox.settings.timeout = 30
+    settings = get_settings()
+    ox.settings.use_cache = settings.osmnx_use_cache
+    ox.settings.timeout = settings.osmnx_timeout_sec
+    if settings.osmnx_overpass_timeout_sec:
+        ox.settings.overpass_settings = (
+            f"[out:json][timeout:{settings.osmnx_overpass_timeout_sec}]"
+        )
+    if settings.osmnx_cache_folder:
+        ox.settings.cache_folder = settings.osmnx_cache_folder
+    if settings.osmnx_overpass_url:
+        ox.settings.overpass_url = settings.osmnx_overpass_url
 
 
 def _validate_bbox(req: IngestRequest) -> None:
@@ -196,8 +208,14 @@ def _feature_count(features) -> int:
 
 
 def _safe_scalar(value):
-    if value is None or isinstance(value, (bool, int, float, str)):
+    if value is None or isinstance(value, (bool, int, str)):
         return value
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, Real):
+        if not isfinite(value):
+            return None
+        return float(value)
     return str(value)
 
 

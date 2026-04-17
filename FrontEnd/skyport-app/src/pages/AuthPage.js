@@ -41,7 +41,7 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
 
   const redirectByRole = (role) => {
     if (role === 'passenger') navigate('/passenger');
-    else if (role === 'analyst') navigate('/expert');
+    else if (role === 'expert') navigate('/expert');
     else navigate('/');
   };
 
@@ -243,8 +243,8 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
                 icon={<AnalyticsIcon sx={{ fontSize: 28, color: '#3b82f6' }} />}
                 title="Analyst"
                 desc="Urban planners & aviation investors performing site analysis"
-                selected={selectedRole === 'analyst'}
-                onClick={() => setSelectedRole('analyst')}
+                selected={selectedRole === 'expert'}
+                onClick={() => setSelectedRole('expert')}
               />
               <RoleCard
                 icon={<ExploreIcon sx={{ fontSize: 28, color: '#8b5cf6' }} />}

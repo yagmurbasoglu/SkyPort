@@ -15,7 +15,7 @@ from app.schemas.token import TokenPayload
 settings = get_settings()
 
 reusable_oauth2 = OAuth2PasswordBearer(
-    tokenUrl=f"/api/auth/login"
+    tokenUrl="/api/auth/login"
 )
 
 

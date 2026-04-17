@@ -2,22 +2,24 @@ import React, { createContext, useContext, useState } from 'react';
 
 /**
  * ============================================================
- * AuthContext — Simulated Authentication
- * ============================================================
- * Currently uses localStorage to simulate login/register.
- *
- * TODO: Replace the login() and register() functions with real API calls:
- *   POST /api/auth/login    { email, password }       → returns { token, user }
- *   POST /api/auth/register { email, password, role } → returns { token, user }
- *
- * TODO: Store the JWT token in localStorage and attach it to axios requests:
- *   axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+ * AuthContext — Real Authentication
  * ============================================================
  */
+import axios from 'axios';
+
+// Set base URL for backend API
+axios.defaults.baseURL = 'http://localhost:8000';
 
 const AuthContext = createContext(null);
 
 const STORAGE_KEY = 'skyport_user';
+const TOKEN_KEY = 'skyport_token';
+
+// On initial load, attach token if it exists
+const token = localStorage.getItem(TOKEN_KEY);
+if (token) {
+  axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
@@ -30,28 +32,47 @@ export const AuthProvider = ({ children }) => {
   });
 
   const isLoggedIn = !!user;
-  const role = user?.role || null; // 'passenger' | 'analyst' | null
+  const role = user?.role || null; // 'passenger' | 'expert' | null
 
-  // ── TODO: Replace with POST /api/auth/login ──────────────────────────────
-  const login = ({ email, password }) => {
-    // Simulated: any email/password works
-    const existingUser = { email, role: user?.role || 'passenger', name: email.split('@')[0] };
+  const login = async ({ email, password }) => {
+    const formData = new URLSearchParams();
+    formData.append('username', email);
+    formData.append('password', password);
+    
+    // 1. Get Token
+    const result = await axios.post('/api/auth/login', formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+    const accessToken = result.data.access_token;
+    localStorage.setItem(TOKEN_KEY, accessToken);
+    axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+
+    // 2. Get User Profile
+    const meResult = await axios.get('/api/users/me');
+    const existingUser = meResult.data;
+    
     localStorage.setItem(STORAGE_KEY, JSON.stringify(existingUser));
     setUser(existingUser);
-    return Promise.resolve(existingUser);
+    return existingUser;
   };
 
-  // ── TODO: Replace with POST /api/auth/register ───────────────────────────
-  const register = ({ email, password, role: selectedRole, name }) => {
-    // Simulated: stores user in localStorage
-    const newUser = { email, role: selectedRole, name: name || email.split('@')[0] };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
-    setUser(newUser);
-    return Promise.resolve(newUser);
+  const register = async ({ email, password, role: selectedRole, name }) => {
+    // 1. Register User
+    await axios.post('/api/auth/register', {
+      email,
+      password,
+      role: selectedRole || 'passenger',
+      full_name: name || email.split('@')[0]
+    });
+    
+    // 2. Automatically login after registration
+    return login({ email, password });
   };
 
   const logout = () => {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    delete axios.defaults.headers.common['Authorization'];
     setUser(null);
   };
 

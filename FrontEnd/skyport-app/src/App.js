@@ -8,6 +8,8 @@ import AuthPage from './pages/AuthPage';
 import MapPage from './pages/MapPage';
 import PassengerPage from './pages/PassengerPage';
 
+import ExpertPage from './pages/ExpertPage';
+
 function App() {
   return (
     <ThemeProvider theme={theme}>
@@ -19,8 +21,7 @@ function App() {
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/map" element={<MapPage />} />
             <Route path="/passenger" element={<PassengerPage />} />
-            {/* TODO: Add analyst route when Expert Dashboard is built */}
-            {/* <Route path="/expert" element={<ExpertPage />} /> */}
+            <Route path="/expert" element={<ExpertPage />} />
           </Routes>
         </Router>
       </AuthProvider>

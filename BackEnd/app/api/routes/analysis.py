@@ -1,45 +1,93 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import Dict
 
 from app.api.deps import RoleChecker
 from app.models.user import User
+from app.schemas.analysis import (
+    AnalysisCompareRequest,
+    AnalysisCompareResponse,
+    AnalysisCreateRequest,
+    AnalysisCreateResponse,
+    AnalysisHeatmapResponse,
+    AnalysisResultResponse,
+    AnalysisStatusResponse,
+)
 from app.services.analysis_service import AnalysisService
 
 router = APIRouter()
 allow_expert = RoleChecker(["expert"])
 
-class AnalysisRequest(BaseModel):
-    region_id: str
-    criteria_weights: Dict[str, float]
 
-@router.post("/run")
-def run_analysis(
-    req: AnalysisRequest,
+class LegacyAnalysisRequest(BaseModel):
+    region_id: str
+    criteria_weights: dict[str, float]
+
+
+@router.post("", response_model=AnalysisCreateResponse)
+def create_analysis(
+    req: AnalysisCreateRequest,
     current_user: User = Depends(allow_expert),
-):
+) -> AnalysisCreateResponse:
     """
-    Run MCDM Analysis (AHP/TOPSIS).
+    Start an async MCDM analysis from a completed geodata ingest job.
     Access: Experts only.
     """
     analysis_svc = AnalysisService()
-    result = analysis_svc.run_ahp_topsis(req.region_id, req.criteria_weights)
-    
-    if result["status"] == "error":
-        raise HTTPException(status_code=400, detail=result["message"])
-        
-    return result
+    result = analysis_svc.start_analysis(
+        user_id=current_user.id,
+        geodata_job_id=req.geodata_job_id,
+        region_name=req.region_name,
+        criteria_weights=req.criteria_weights,
+    )
+    return AnalysisCreateResponse(**result)
 
-@router.get("/{analysis_id}/status")
+
+@router.get("/{analysis_id}/status", response_model=AnalysisStatusResponse)
 def get_analysis_status(
-    analysis_id: str,
+    analysis_id: int,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisStatusResponse:
+    """
+    Get status of an async analysis job.
+    """
+    result = AnalysisService().get_status(analysis_id)
+    return AnalysisStatusResponse(**result)
+
+
+@router.get("/{analysis_id}/result", response_model=AnalysisResultResponse)
+def get_analysis_result(
+    analysis_id: int,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisResultResponse:
+    result = AnalysisService().get_result(analysis_id)
+    return AnalysisResultResponse(**result)
+
+
+@router.get("/{analysis_id}/heatmap", response_model=AnalysisHeatmapResponse)
+def get_analysis_heatmap(
+    analysis_id: int,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisHeatmapResponse:
+    result = AnalysisService().get_heatmap(analysis_id)
+    return AnalysisHeatmapResponse(**result)
+
+
+@router.post("/compare", response_model=AnalysisCompareResponse)
+def compare_analysis_candidates(
+    req: AnalysisCompareRequest,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisCompareResponse:
+    result = AnalysisService().compare_candidates(req.analysis_id, req.cell_indexes)
+    return AnalysisCompareResponse(**result)
+
+
+@router.post("/run")
+def run_analysis_legacy(
+    req: LegacyAnalysisRequest,
     current_user: User = Depends(allow_expert),
 ):
     """
-    Get status of an async analysis task.
+    Backward-compatible alias for the prototype ExpertPage flow.
+    Prefer POST /api/analysis.
     """
-    # Mocking quick return for now
-    return {
-        "analysis_id": analysis_id,
-        "status": "completed"
-    }
+    return AnalysisService().run_ahp_topsis(req.region_id, req.criteria_weights)

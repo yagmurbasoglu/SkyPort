@@ -115,6 +115,32 @@ def test_missing_layers_returns_partial_success(monkeypatch) -> None:
     assert status.json()["status"] == "partial_success"
 
 
+def test_h3_only_ingest_returns_partial_success(monkeypatch) -> None:
+    monkeypatch.setattr(
+        geodata_service,
+        "extract_osm_data",
+        lambda _bbox: (
+            {"buildings": [], "roads": [], "land_use": [], "nfz": [], "controlled_airspace": []},
+            ["Buildings layer unavailable: InsufficientResponseError"],
+        ),
+    )
+    monkeypatch.setattr(geodata_service, "clean_and_transform", lambda features: features)
+    monkeypatch.setattr(geodata_service, "generate_h3_grid", lambda _bbox, _res: ["x"])
+
+    def run_inline(job_id: str, req_data: dict) -> None:
+        geodata_service._run_ingest_job(job_id, req_data)
+
+    monkeypatch.setattr(geodata_service, "_start_worker", run_inline)
+
+    created = client.post("/api/geodata/ingest", json=_valid_payload())
+    assert created.status_code == 200
+    job_id = created.json()["job_id"]
+
+    status = client.get(f"/api/geodata/ingest/{job_id}")
+    assert status.status_code == 200
+    assert status.json()["status"] == "partial_success"
+
+
 def test_get_ingest_status_returns_saved_job(monkeypatch) -> None:
     monkeypatch.setattr(
         geodata_service,

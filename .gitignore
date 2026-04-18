@@ -69,6 +69,14 @@ db.sqlite3-journal
 instance/
 .webassets-cache
 
+# Local geodata provider cache
+BackEnd/cache/
+
+# Local planning/reference docs
+BackEnd/BACKEND_BRANCH_GUIDE.md
+BackEnd/rad.txt
+BackEnd/ssd.txt
+
 # Scrapy stuff:
 .scrapy
 
@@ -181,6 +189,8 @@ logs
 
 node_modules
 bower_components
+build/
+build-check*/
 
 *.sublime*
 

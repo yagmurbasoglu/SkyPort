@@ -79,6 +79,9 @@ def _derive_status(warnings: list[str], layer_counts: dict[str, int]) -> str:
         + layer_counts.get("land_use", 0)
         + layer_counts.get("nfz", 0)
     )
+    h3_cells = layer_counts.get("h3_cells", 0)
+    if h3_cells > 0 and core_total == 0:
+        return "partial_success"
     if core_total == 0:
         return "failed"
     if warnings:

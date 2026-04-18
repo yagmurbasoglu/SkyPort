@@ -6,4 +6,5 @@ class Base(DeclarativeBase):
 
 
 from app.models.user import User  # noqa
+from app.models.analysis import Analysis, AnalysisResult  # noqa
 

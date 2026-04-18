@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Box, Paper, Typography, Divider } from '@mui/material';
+import { getMapStyle, hasMapboxToken } from '../../utils/mapStyle';
 
 const ISTANBUL_CENTER = [28.9784, 41.0082];
 const ISTANBUL_ZOOM = 10.5;
@@ -41,15 +42,13 @@ const PassengerMapView = ({
     if (map.current) return;
 
     const token = process.env.REACT_APP_MAPBOX_TOKEN;
-    if (!token) {
-      console.error('[PassengerMapView] REACT_APP_MAPBOX_TOKEN is not set. Add it to .env');
-      return;
+    if (hasMapboxToken()) {
+      mapboxgl.accessToken = token;
     }
-    mapboxgl.accessToken = token;
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
+      style: getMapStyle(),
       center: ISTANBUL_CENTER,
       zoom: ISTANBUL_ZOOM,
       attributionControl: false,

@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     notam_poll_minutes: int = 15
     notam_timeout_sec: float = 30.0
     notam_retry_count: int = 3
+    weather_enabled: bool = True
+    weather_api_url: str = "https://api.open-meteo.com/v1/forecast"
+    weather_timeout_sec: float = 5.0
+    weather_retry_count: int = 2
     osmnx_use_cache: bool = True
     osmnx_timeout_sec: float = 30.0
     osmnx_overpass_timeout_sec: int | None = None

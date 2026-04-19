@@ -72,10 +72,6 @@ instance/
 # Local geodata provider cache
 BackEnd/cache/
 
-# Local planning/reference docs
-BackEnd/BACKEND_BRANCH_GUIDE.md
-BackEnd/rad.txt
-BackEnd/ssd.txt
 
 # Scrapy stuff:
 .scrapy
@@ -191,6 +187,7 @@ node_modules
 bower_components
 build/
 build-check*/
+build-*/
 
 *.sublime*
 

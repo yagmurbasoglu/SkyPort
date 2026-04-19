@@ -9,6 +9,8 @@ from app.api.geodata import router as geodata_router
 from app.api.health import router as health_router
 from app.api.routes.analysis import router as analysis_router
 from app.api.routes.geodata import router as geodata_tools_router
+from app.api.routes.route import router as route_router
+from app.api.routes.vertiports import router as vertiports_router
 from app.api.routes import auth, users
 from app.core.config import get_settings
 from app.core.errors import http_exception_handler, unhandled_exception_handler
@@ -49,6 +51,8 @@ def create_app() -> FastAPI:
     app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(geodata_tools_router, prefix="/api/geodata", tags=["geodata"])
     app.include_router(analysis_router, prefix="/api/analysis", tags=["analysis"])
+    app.include_router(route_router, prefix="/api/route", tags=["route"])
+    app.include_router(vertiports_router, prefix="/api/vertiports", tags=["vertiports"])
 
     @app.get("/", tags=["system"])
     async def root() -> dict[str, str]:

@@ -22,10 +22,13 @@ import AnalyticsIcon from '@mui/icons-material/Analytics';
 import CropFreeIcon from '@mui/icons-material/CropFree';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
+import FmdGoodIcon from '@mui/icons-material/FmdGood';
 import LogoutIcon from '@mui/icons-material/Logout';
 import MapIcon from '@mui/icons-material/Map';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
+import RouteIcon from '@mui/icons-material/AltRoute';
 import ScienceIcon from '@mui/icons-material/Science';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -43,6 +46,15 @@ const ISTANBUL_AIRSPACE_BOUNDS = {
 const DEFAULT_WEIGHTS = { obstacle: 0.35, transport: 0.25, land_use: 0.2, nfz: 0.2 };
 const criteriaLabels = { obstacle: 'Obstacles', transport: 'Transport', land_use: 'Land Use', nfz: 'NFZ' };
 const emptyCollection = { type: 'FeatureCollection', features: [] };
+const DEFAULT_EXPERT_ROUTE = {
+  fromName: 'Taksim Central Vertiport',
+  toName: 'Uskudar Ferry Vertiport',
+  maxWindKmh: 35,
+};
+const DEFAULT_ROUTE_POINTS = {
+  from: { lat: 41.0369, lng: 28.985, name: 'Taksim Central Vertiport' },
+  to: { lat: 41.022, lng: 29.0151, name: 'Uskudar Ferry Vertiport' },
+};
 
 const panelSx = {
   background: 'rgba(9, 14, 26, 0.92)',
@@ -67,8 +79,29 @@ const fieldSx = {
 const statusColor = (status) => {
   if (status === 'completed' || status === 'success') return '#22c55e';
   if (status === 'partial_success' || status === 'running') return '#f59e0b';
-  if (status === 'failed') return '#ef4444';
+  if (status === 'failed' || status === 'unsafe' || status === 'weather_risk') return '#ef4444';
+  if (status === 'warning') return '#f97316';
+  if (status === 'safe') return '#22c55e';
   return '#94a3b8';
+};
+
+const statusChipSx = (status) => {
+  if (status === 'unsafe' || status === 'failed' || status === 'weather_risk') {
+    return {
+      bgcolor: 'rgba(239,68,68,0.24)',
+      color: '#fecaca',
+      border: '1px solid rgba(248,113,113,0.6)',
+      height: 24,
+      fontWeight: 900,
+      textTransform: 'uppercase',
+    };
+  }
+  return {
+    bgcolor: `${statusColor(status)}22`,
+    color: statusColor(status),
+    height: 22,
+    fontWeight: 800,
+  };
 };
 
 const scoreColor = (score) => {
@@ -92,6 +125,52 @@ const bboxToFeature = (bbox) => ({
   properties: {},
 });
 
+const createAircraftElement = (blocked = false) => {
+  const shell = document.createElement('div');
+  shell.style.cssText = `
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    filter: drop-shadow(0 0 12px ${blocked ? 'rgba(239,68,68,0.95)' : 'rgba(56,189,248,0.95)'});
+  `;
+  shell.innerHTML = `
+    <svg width="38" height="38" viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="32" cy="32" r="20" fill="${blocked ? 'rgba(239,68,68,0.22)' : 'rgba(14,165,233,0.22)'}" stroke="${blocked ? '#fca5a5' : '#7dd3fc'}" stroke-width="2"/>
+      <path d="M31 9 L39 31 L56 38 L55 44 L37 40 L32 55 L27 55 L27 40 L9 44 L8 38 L25 31 Z" fill="${blocked ? '#ef4444' : '#38bdf8'}" stroke="#f8fafc" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M26 31 H38" stroke="#0f172a" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+    </svg>
+  `;
+  return shell;
+};
+
+const routePointAt = (coordinates, progress) => {
+  if (!coordinates?.length) return null;
+  const maxIndex = coordinates.length - 1;
+  const exactIndex = Math.max(0, Math.min(maxIndex, progress * maxIndex));
+  const low = Math.floor(exactIndex);
+  const high = Math.min(maxIndex, low + 1);
+  const local = exactIndex - low;
+  const start = coordinates[low];
+  const end = coordinates[high];
+  return [
+    start[0] + (end[0] - start[0]) * local,
+    start[1] + (end[1] - start[1]) * local,
+  ];
+};
+
+const routeStopProgress = (route) => {
+  const blocker = route?.conflicts?.find((conflict) => conflict.severity === 'blocker' && conflict.route_progress !== null && conflict.route_progress !== undefined);
+  if (!blocker) return route?.is_safe === false ? 0.58 : 1;
+  return Math.max(0.04, Math.min(0.98, Number(blocker.route_progress)));
+};
+
+const routeStopPoint = (route) => {
+  const blocker = route?.conflicts?.find((conflict) => conflict.severity === 'blocker' && Array.isArray(conflict.block_point));
+  return blocker?.block_point || null;
+};
+
 const ExpertAnalysisPage = () => {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
@@ -101,6 +180,8 @@ const ExpertAnalysisPage = () => {
   const startPoint = useRef(null);
   const selectionRectRef = useRef(null);
   const isDrawing = useRef(false);
+  const aircraftMarkerRef = useRef(null);
+  const aircraftFrameRef = useRef(null);
 
   const [mapReady, setMapReady] = useState(false);
   const [mapNotice, setMapNotice] = useState('');
@@ -114,6 +195,10 @@ const ExpertAnalysisPage = () => {
   const [analysis, setAnalysis] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [compareResult, setCompareResult] = useState(null);
+  const [routeForm, setRouteForm] = useState(DEFAULT_EXPERT_ROUTE);
+  const [routePickMode, setRoutePickMode] = useState(null);
+  const [routePoints, setRoutePoints] = useState(DEFAULT_ROUTE_POINTS);
+  const [routeResult, setRouteResult] = useState(null);
   const [airspaceSummary, setAirspaceSummary] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -236,9 +321,30 @@ const ExpertAnalysisPage = () => {
         source: 'analysis-heatmap',
         paint: { 'line-color': 'rgba(255,255,255,0.45)', 'line-width': 0.7 },
       });
+      instance.addSource('expert-route', { type: 'geojson', data: emptyCollection });
+      instance.addLayer({
+        id: 'expert-route-line',
+        type: 'line',
+        source: 'expert-route',
+        paint: { 'line-color': '#f97316', 'line-width': 6, 'line-opacity': 1, 'line-dasharray': [1.4, 0.8] },
+      });
+      instance.addSource('expert-route-points', { type: 'geojson', data: emptyCollection });
+      instance.addLayer({
+        id: 'expert-route-point-circles',
+        type: 'circle',
+        source: 'expert-route-points',
+        paint: {
+          'circle-radius': 8,
+          'circle-color': ['get', 'color'],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
+      });
       fetchAirspace(ISTANBUL_AIRSPACE_BOUNDS);
     });
     return () => {
+      if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
+      if (aircraftMarkerRef.current) aircraftMarkerRef.current.remove();
       if (instance) {
         instance.remove();
         if (map.current === instance) {
@@ -262,6 +368,27 @@ const ExpertAnalysisPage = () => {
     fetchAirspace(ISTANBUL_AIRSPACE_BOUNDS);
   }, [fetchAirspace, mapReady]);
 
+  useEffect(() => {
+    if (!mapReady || !map.current) return;
+    const source = map.current.getSource('expert-route-points');
+    if (!source) return;
+    source.setData({
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [routePoints.from.lng, routePoints.from.lat] },
+          properties: { role: 'from', color: '#22c55e' },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [routePoints.to.lng, routePoints.to.lat] },
+          properties: { role: 'to', color: '#ef4444' },
+        },
+      ],
+    });
+  }, [mapReady, routePoints]);
+
   const setHeatmap = useCallback((geojson) => {
     const source = map.current?.getSource('analysis-heatmap');
     if (!source) return;
@@ -273,6 +400,84 @@ const ExpertAnalysisPage = () => {
     }
   }, []);
 
+  const setRouteLayer = useCallback((route) => {
+    const source = map.current?.getSource('expert-route');
+    if (!source) return;
+    if (!route?.coordinates?.length) {
+      source.setData(emptyCollection);
+      if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
+      if (aircraftMarkerRef.current) {
+        aircraftMarkerRef.current.remove();
+        aircraftMarkerRef.current = null;
+      }
+      return;
+    }
+    source.setData({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: route.coordinates },
+      properties: { route_id: route.route_id, safety_status: route.safety_status },
+    });
+    const bounds = new mapboxgl.LngLatBounds();
+    route.coordinates.forEach((coord) => bounds.extend(coord));
+    map.current.fitBounds(bounds, { padding: 82, duration: 900 });
+
+    if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
+    if (aircraftMarkerRef.current) aircraftMarkerRef.current.remove();
+    const isBlocked = route.is_safe === false || route.safety_status === 'unsafe' || route.safety_status === 'weather_risk';
+    aircraftMarkerRef.current = new mapboxgl.Marker({ element: createAircraftElement(isBlocked) })
+      .setLngLat(route.coordinates[0])
+      .addTo(map.current);
+    const endProgress = isBlocked ? routeStopProgress(route) : 1;
+    const stopPoint = isBlocked ? routeStopPoint(route) : null;
+    const durationMs = isBlocked ? 2400 : 4200;
+    const startTime = performance.now();
+    const animate = (now) => {
+      const raw = Math.min(1, (now - startTime) / durationMs);
+      const eased = 1 - ((1 - raw) ** 3);
+      const point = raw >= 1 && stopPoint ? stopPoint : routePointAt(route.coordinates, eased * endProgress);
+      if (point && aircraftMarkerRef.current) aircraftMarkerRef.current.setLngLat(point);
+      if (raw < 1) aircraftFrameRef.current = requestAnimationFrame(animate);
+    };
+    aircraftFrameRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  useEffect(() => {
+    if (!mapReady || !map.current || !routePickMode) return undefined;
+    const instance = map.current;
+    const handleClick = (event) => {
+      const nextPoint = {
+        lat: Number(event.lngLat.lat.toFixed(6)),
+        lng: Number(event.lngLat.lng.toFixed(6)),
+        name: routePickMode === 'from' ? 'Expert selected origin' : 'Expert selected destination',
+      };
+      setRoutePoints((prev) => ({ ...prev, [routePickMode]: nextPoint }));
+      setRouteResult(null);
+      setRouteLayer(null);
+      setRoutePickMode(routePickMode === 'from' ? 'to' : null);
+    };
+    instance.getCanvas().style.cursor = 'crosshair';
+    instance.on('click', handleClick);
+    return () => {
+      instance.off('click', handleClick);
+      instance.getCanvas().style.cursor = '';
+    };
+  }, [mapReady, routePickMode, setRouteLayer]);
+
+  const resetExpertRoute = useCallback(() => {
+    setRoutePickMode(null);
+    setRoutePoints(DEFAULT_ROUTE_POINTS);
+    setRouteForm(DEFAULT_EXPERT_ROUTE);
+    setRouteResult(null);
+    setRouteLayer(null);
+  }, [setRouteLayer]);
+
+  const swapExpertRoute = useCallback(() => {
+    setRoutePickMode(null);
+    setRoutePoints((prev) => ({ from: prev.to, to: prev.from }));
+    setRouteResult(null);
+    setRouteLayer(null);
+  }, [setRouteLayer]);
+
   const clearSelection = useCallback(() => {
     setBbox(null);
     setSelectionRect(null);
@@ -283,7 +488,9 @@ const ExpertAnalysisPage = () => {
     setCompareResult(null);
     setAirspaceSummary(null);
     setHeatmap(emptyCollection);
-  }, [setHeatmap]);
+    setRouteResult(null);
+    setRouteLayer(null);
+  }, [setHeatmap, setRouteLayer]);
 
   const handleMouseDown = useCallback((event) => {
     if (!drawOverlay.current) return;
@@ -479,6 +686,38 @@ const ExpertAnalysisPage = () => {
     }
   };
 
+  const runExpertRouteSafety = async () => {
+    setBusy('route');
+    setError('');
+    setRouteResult(null);
+    setRouteLayer(null);
+    try {
+      const response = await axios.post('/api/route', {
+        from_point: {
+          lat: routePoints.from.lat,
+          lng: routePoints.from.lng,
+          name: routePoints.from.name || routeForm.fromName || 'Expert route origin',
+        },
+        to_point: {
+          lat: routePoints.to.lat,
+          lng: routePoints.to.lng,
+          name: routePoints.to.name || routeForm.toName || 'Expert route destination',
+        },
+        constraints: {
+          avoid_nfz: true,
+          avoid_obstacles: true,
+          max_wind_kmh: Number(routeForm.maxWindKmh),
+        },
+      });
+      setRouteResult(response.data);
+      setRouteLayer(response.data);
+    } catch (err) {
+      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/');
@@ -488,7 +727,7 @@ const ExpertAnalysisPage = () => {
     <Box sx={{ height: '100vh', width: '100%', bgcolor: '#090e1a', overflow: 'hidden', position: 'relative' }}>
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
       {mapNotice && (
-        <Alert severity="info" sx={{ position: 'absolute', bottom: 16, left: 16, zIndex: 21, maxWidth: 360 }}>
+        <Alert severity="info" sx={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 21, maxWidth: 440, fontSize: '0.76rem', py: 0.5 }}>
           {mapNotice}
         </Alert>
       )}
@@ -616,6 +855,80 @@ const ExpertAnalysisPage = () => {
               ]}
             />
           )}
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+          <Box>
+            <Typography sx={{ color: '#e2e8f0', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <RouteIcon fontSize="small" /> Route Safety
+            </Typography>
+            <Typography sx={{ color: '#94a3b8', fontSize: '0.76rem', mt: 0.5 }}>
+              Pick two map points to validate an operational corridor against NFZ, controlled airspace, and Open-Meteo wind.
+            </Typography>
+          </Box>
+          {routePickMode && (
+            <Alert severity="info" sx={{ fontSize: '0.74rem' }}>
+              Click the map to set the {routePickMode === 'from' ? 'origin' : 'destination'} point.
+              {routePickMode === 'from' ? ' Destination selection starts after that.' : ''}
+            </Alert>
+          )}
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+            <RoutePointCard label="Origin" point={routePoints.from} color="#22c55e" />
+            <RoutePointCard label="Destination" point={routePoints.to} color="#ef4444" />
+          </Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+            <Button
+              variant={routePickMode === 'from' ? 'contained' : 'outlined'}
+              startIcon={<FmdGoodIcon />}
+              onClick={() => {
+                setDrawMode(false);
+                setRoutePickMode('from');
+                setError('');
+              }}
+              sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800 }}
+            >
+              Pick Origin
+            </Button>
+            <Button
+              variant={routePickMode === 'to' ? 'contained' : 'outlined'}
+              startIcon={<FmdGoodIcon />}
+              onClick={() => {
+                setDrawMode(false);
+                setRoutePickMode('to');
+                setError('');
+              }}
+              sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800 }}
+            >
+              Pick Destination
+            </Button>
+          </Box>
+          <Stack direction="row" spacing={1}>
+            <Button fullWidth startIcon={<SwapHorizIcon />} onClick={swapExpertRoute} sx={{ color: '#cbd5e1', borderRadius: '8px', textTransform: 'none' }}>
+              Swap
+            </Button>
+            <Button fullWidth startIcon={<MyLocationIcon />} onClick={resetExpertRoute} sx={{ color: '#7dd3fc', borderRadius: '8px', textTransform: 'none' }}>
+              Defaults
+            </Button>
+          </Stack>
+          <TextField label="Max Wind km/h" size="small" type="number" value={routeForm.maxWindKmh} onChange={(event) => setRouteForm((prev) => ({ ...prev, maxWindKmh: event.target.value }))} sx={fieldSx} />
+          <Button fullWidth variant="contained" startIcon={<RouteIcon />} onClick={runExpertRouteSafety} disabled={Boolean(busy)} sx={{ bgcolor: '#7c3aed', borderRadius: '8px', textTransform: 'none', fontWeight: 800, '&:hover': { bgcolor: '#6d28d9' } }}>
+            {busy === 'route' ? <CircularProgress size={22} color="inherit" /> : 'Run Route Safety Check'}
+          </Button>
+          {routeResult && (
+            <StatusPanel
+              title="Route Safety"
+              status={routeResult.safety_status}
+              rows={[
+                ['Route ID', routeResult.route_id],
+                ['Distance', `${Number(routeResult.distance_km).toFixed(2)} km`],
+                ['Duration', `${routeResult.duration_min} min`],
+                ['Weather', routeResult.weather?.source === 'open_meteo' ? 'Open-Meteo' : 'Fallback'],
+                ['10m Wind', routeResult.weather?.wind_kmh !== undefined && routeResult.weather?.wind_kmh !== null ? `${Number(routeResult.weather.wind_kmh).toFixed(1)} km/h` : 'n/a'],
+                ['80m Wind', routeResult.weather?.wind_80m_kmh !== undefined && routeResult.weather?.wind_80m_kmh !== null ? `${Number(routeResult.weather.wind_80m_kmh).toFixed(1)} km/h` : 'n/a'],
+                ['120m Wind', routeResult.weather?.wind_120m_kmh !== undefined && routeResult.weather?.wind_120m_kmh !== null ? `${Number(routeResult.weather.wind_120m_kmh).toFixed(1)} km/h` : 'n/a'],
+              ]}
+            />
+          )}
+          {routeResult?.warnings?.length > 0 && <CompactWarning title="Warnings" items={routeResult.warnings} />}
+          {routeResult?.conflicts?.length > 0 && <CompactWarning title="Conflicts" items={routeResult.conflicts.map((conflict) => `${conflict.type.toUpperCase()}: ${conflict.zone_name || conflict.message}`)} tone="danger" />}
         </Stack>
       </Paper>
 
@@ -706,7 +1019,7 @@ const StatusPanel = ({ title, status, rows, warnings = [] }) => (
   <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
       <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800 }}>{title}</Typography>
-      <Chip label={status} size="small" sx={{ bgcolor: `${statusColor(status)}22`, color: statusColor(status), height: 22, fontWeight: 800 }} />
+      <Chip label={status} size="small" sx={statusChipSx(status)} />
     </Box>
     {rows.map(([label, value]) => (
       <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 0.5 }}>
@@ -715,6 +1028,32 @@ const StatusPanel = ({ title, status, rows, warnings = [] }) => (
       </Box>
     ))}
     {warnings?.length > 0 && <Alert severity="warning" sx={{ mt: 1, fontSize: '0.72rem' }}>{warnings.slice(0, 2).join(' ')}</Alert>}
+  </Box>
+);
+
+const CompactWarning = ({ title, items, tone = 'warning' }) => (
+  <Box sx={{ bgcolor: tone === 'danger' ? 'rgba(127,29,29,0.28)' : 'rgba(120,53,15,0.28)', border: `1px solid ${tone === 'danger' ? 'rgba(248,113,113,0.25)' : 'rgba(251,191,36,0.25)'}`, borderRadius: '8px', p: 1 }}>
+    <Typography sx={{ color: tone === 'danger' ? '#fca5a5' : '#facc15', fontSize: '0.7rem', fontWeight: 900, mb: 0.6 }}>{title}</Typography>
+    {items.slice(0, 3).map((item, index) => (
+      <Typography key={`${title}-${index}`} sx={{ color: '#e2e8f0', fontSize: '0.68rem', lineHeight: 1.35, overflowWrap: 'anywhere', mb: 0.35 }}>
+        {item}
+      </Typography>
+    ))}
+  </Box>
+);
+
+const formatCoord = (value) => Number(value).toFixed(5);
+
+const RoutePointCard = ({ label, point, color }) => (
+  <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', p: 1, minWidth: 0 }}>
+    <Stack direction="row" spacing={0.7} alignItems="center" sx={{ mb: 0.6 }}>
+      <Box sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: color, boxShadow: `0 0 0 4px ${color}22` }} />
+      <Typography sx={{ color: '#cbd5e1', fontSize: '0.72rem', fontWeight: 900 }}>{label}</Typography>
+    </Stack>
+    <Typography sx={{ color: '#e2e8f0', fontSize: '0.72rem', fontWeight: 800, overflowWrap: 'anywhere' }}>{point.name}</Typography>
+    <Typography sx={{ color: '#94a3b8', fontSize: '0.64rem', fontFamily: 'monospace', mt: 0.45 }}>
+      {formatCoord(point.lat)}, {formatCoord(point.lng)}
+    </Typography>
   </Box>
 );
 

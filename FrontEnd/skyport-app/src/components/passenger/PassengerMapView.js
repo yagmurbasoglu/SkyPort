@@ -2,15 +2,69 @@ import React, { useRef, useEffect, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Box, Paper, Typography, Divider } from '@mui/material';
+import axios from 'axios';
 import { getMapStyle, hasMapboxToken } from '../../utils/mapStyle';
 
 const ISTANBUL_CENTER = [28.9784, 41.0082];
 const ISTANBUL_ZOOM = 10.5;
+const ISTANBUL_AIRSPACE_BOUNDS = {
+  west: 28.45,
+  east: 29.55,
+  south: 40.75,
+  north: 41.48,
+};
+const emptyCollection = { type: 'FeatureCollection', features: [] };
 
 const scoreColor = (score) => {
   if (score >= 85) return '#22c55e';
   if (score >= 70) return '#eab308';
   return '#ef4444';
+};
+
+const createAircraftElement = (blocked = false) => {
+  const shell = document.createElement('div');
+  shell.style.cssText = `
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+  `;
+  shell.innerHTML = `
+    <svg width="38" height="38" viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="32" cy="32" r="20" fill="${blocked ? 'rgba(239,68,68,0.22)' : 'rgba(14,165,233,0.22)'}" stroke="${blocked ? '#fca5a5' : '#7dd3fc'}" stroke-width="2"/>
+      <path d="M31 9 L39 31 L56 38 L55 44 L37 40 L32 55 L27 55 L27 40 L9 44 L8 38 L25 31 Z" fill="${blocked ? '#ef4444' : '#38bdf8'}" stroke="#f8fafc" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M26 31 H38" stroke="#0f172a" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+    </svg>
+  `;
+  shell.style.filter = `drop-shadow(0 0 12px ${blocked ? 'rgba(239,68,68,0.95)' : 'rgba(56,189,248,0.95)'})`;
+  return shell;
+};
+
+const routePointAt = (coordinates, progress) => {
+  if (!coordinates?.length) return null;
+  const maxIndex = coordinates.length - 1;
+  const exactIndex = Math.max(0, Math.min(maxIndex, progress * maxIndex));
+  const low = Math.floor(exactIndex);
+  const high = Math.min(maxIndex, low + 1);
+  const local = exactIndex - low;
+  const start = coordinates[low];
+  const end = coordinates[high];
+  return [
+    start[0] + (end[0] - start[0]) * local,
+    start[1] + (end[1] - start[1]) * local,
+  ];
+};
+
+const routeStopProgress = (route) => {
+  const blocker = route?.conflicts?.find((conflict) => conflict.severity === 'blocker' && conflict.route_progress !== null && conflict.route_progress !== undefined);
+  if (!blocker) return route?.is_safe === false ? 0.58 : 1;
+  return Math.max(0.04, Math.min(0.98, Number(blocker.route_progress)));
+};
+
+const routeStopPoint = (route) => {
+  const blocker = route?.conflicts?.find((conflict) => conflict.severity === 'blocker' && Array.isArray(conflict.block_point));
+  return blocker?.block_point || null;
 };
 
 /**
@@ -32,10 +86,13 @@ const PassengerMapView = ({
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef([]); // custom HTML markers
+  const aircraftMarkerRef = useRef(null);
+  const aircraftFrameRef = useRef(null);
 
   const [coords, setCoords] = useState({ lng: ISTANBUL_CENTER[0].toFixed(4), lat: ISTANBUL_CENTER[1].toFixed(4) });
   const [zoom, setZoom] = useState(ISTANBUL_ZOOM.toFixed(1));
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [airspaceSummary, setAirspaceSummary] = useState(null);
 
   // ── Initialize map ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -58,27 +115,59 @@ const PassengerMapView = ({
 
     map.current.on('load', () => {
       setMapLoaded(true);
+      map.current.addSource('passenger-airspace-overlay', {
+        type: 'geojson',
+        data: emptyCollection,
+      });
+      map.current.addLayer({
+        id: 'passenger-airspace-nfz-fill',
+        type: 'fill',
+        source: 'passenger-airspace-overlay',
+        filter: ['==', ['get', 'zone_category'], 'nfz'],
+        paint: { 'fill-color': '#ef4444', 'fill-opacity': 0.24 },
+      });
+      map.current.addLayer({
+        id: 'passenger-airspace-nfz-line',
+        type: 'line',
+        source: 'passenger-airspace-overlay',
+        filter: ['==', ['get', 'zone_category'], 'nfz'],
+        paint: { 'line-color': '#f87171', 'line-width': 2 },
+      });
+      map.current.addLayer({
+        id: 'passenger-airspace-controlled-fill',
+        type: 'fill',
+        source: 'passenger-airspace-overlay',
+        filter: ['==', ['get', 'zone_category'], 'controlled_airspace'],
+        paint: { 'fill-color': '#38bdf8', 'fill-opacity': 0.18 },
+      });
+      map.current.addLayer({
+        id: 'passenger-airspace-controlled-line',
+        type: 'line',
+        source: 'passenger-airspace-overlay',
+        filter: ['==', ['get', 'zone_category'], 'controlled_airspace'],
+        paint: { 'line-color': '#7dd3fc', 'line-width': 2 },
+      });
       // Add route source/layer stubs (empty initially)
       map.current.addSource('route-source', {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
+        data: emptyCollection,
       });
       map.current.addLayer({
         id: 'route-line',
         type: 'line',
         source: 'route-source',
         paint: {
-          'line-color': '#8b5cf6',
-          'line-width': 3,
-          'line-opacity': 0.9,
-          'line-dasharray': [3, 2],
+          'line-color': '#f97316',
+          'line-width': 6,
+          'line-opacity': 1,
+          'line-dasharray': [1.4, 0.8],
         },
       });
 
       // From / To endpoint markers as a separate source
       map.current.addSource('route-endpoints', {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
+        data: emptyCollection,
       });
       map.current.addLayer({
         id: 'route-endpoint-circles',
@@ -104,11 +193,29 @@ const PassengerMapView = ({
     });
 
     return () => {
+      if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
+      if (aircraftMarkerRef.current) aircraftMarkerRef.current.remove();
       if (map.current) { map.current.remove(); map.current = null; }
     };
   }, []);
 
   // ── Update vertiport markers when filteredVertiports changes ─────────────
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    const source = map.current.getSource('passenger-airspace-overlay');
+    if (!source) return;
+
+    axios.get('/api/geodata/airspace', { params: ISTANBUL_AIRSPACE_BOUNDS })
+      .then((response) => {
+        source.setData(response.data);
+        setAirspaceSummary(response.data.summary || null);
+      })
+      .catch(() => {
+        source.setData(emptyCollection);
+        setAirspaceSummary(null);
+      });
+  }, [mapLoaded]);
+
   useEffect(() => {
     if (!mapLoaded || !map.current) return;
 
@@ -122,21 +229,30 @@ const PassengerMapView = ({
       el.className = 'vp-marker';
       const isSelected = selectedVertiport?.id === vp.id;
       el.style.cssText = `
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      `;
+      const dot = document.createElement('div');
+      dot.style.cssText = `
         width: ${isSelected ? 18 : 14}px;
         height: ${isSelected ? 18 : 14}px;
         border-radius: 50%;
         background: ${scoreColor(vp.suitabilityScore)};
         border: ${isSelected ? '3px' : '2px'} solid #ffffff;
-        cursor: pointer;
         box-shadow: 0 0 ${isSelected ? '14px' : '6px'} ${scoreColor(vp.suitabilityScore)}99;
-        transition: all 0.2s;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
       `;
+      el.appendChild(dot);
 
       el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(1.25)';
+        dot.style.transform = 'scale(1.25)';
       });
       el.addEventListener('mouseleave', () => {
-        el.style.transform = 'scale(1)';
+        dot.style.transform = 'scale(1)';
       });
       el.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -186,10 +302,38 @@ const PassengerMapView = ({
       const bounds = new mapboxgl.LngLatBounds();
       route.coordinates.forEach(([lng, lat]) => bounds.extend([lng, lat]));
       map.current.fitBounds(bounds, { padding: 80, duration: 1200 });
+
+      if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
+      if (aircraftMarkerRef.current) aircraftMarkerRef.current.remove();
+      const isBlocked = route.is_safe === false || route.safety_status === 'unsafe' || route.safety_status === 'weather_risk';
+      const aircraft = createAircraftElement(isBlocked);
+      aircraftMarkerRef.current = new mapboxgl.Marker({ element: aircraft })
+        .setLngLat(route.coordinates[0])
+        .addTo(map.current);
+      const endProgress = isBlocked ? routeStopProgress(route) : 1;
+      const stopPoint = isBlocked ? routeStopPoint(route) : null;
+      const durationMs = isBlocked ? 2400 : 4200;
+      const startTime = performance.now();
+      const animate = (now) => {
+        const elapsed = now - startTime;
+        const raw = Math.min(1, elapsed / durationMs);
+        const eased = 1 - ((1 - raw) ** 3);
+        const point = raw >= 1 && stopPoint ? stopPoint : routePointAt(route.coordinates, eased * endProgress);
+        if (point && aircraftMarkerRef.current) aircraftMarkerRef.current.setLngLat(point);
+        if (raw < 1) {
+          aircraftFrameRef.current = requestAnimationFrame(animate);
+        }
+      };
+      aircraftFrameRef.current = requestAnimationFrame(animate);
     } else {
       // Clear route
       routeSrc.setData({ type: 'FeatureCollection', features: [] });
       epSrc.setData({ type: 'FeatureCollection', features: [] });
+      if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
+      if (aircraftMarkerRef.current) {
+        aircraftMarkerRef.current.remove();
+        aircraftMarkerRef.current = null;
+      }
     }
   }, [route, mapLoaded]);
 
@@ -243,9 +387,11 @@ const PassengerMapView = ({
         borderRadius: '10px',
       }}>
         <Typography sx={{ fontSize: '0.6rem', color: '#334155', fontWeight: 700, letterSpacing: '0.07em', mb: 0.8, textTransform: 'uppercase' }}>
-          Suitability
+          Map Layers
         </Typography>
         {[
+          { label: `NFZ ${airspaceSummary?.nfz ?? 0}`, color: '#ef4444' },
+          { label: `Controlled ${airspaceSummary?.controlled_airspace ?? 0}`, color: '#38bdf8' },
           { label: 'High  ≥85', color: '#22c55e' },
           { label: 'Mid   ≥70', color: '#eab308' },
           { label: 'Low   <70', color: '#ef4444' },

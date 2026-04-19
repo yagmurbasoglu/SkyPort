@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Box, Paper, Typography, IconButton, Tooltip,
   Tabs, Tab, Fade, Chip,
@@ -8,6 +8,7 @@ import FlightIcon from '@mui/icons-material/Flight';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import CloseIcon from '@mui/icons-material/Close';
+import axios from 'axios';
 
 import Navbar from '../components/Navbar';
 import PassengerMapView from '../components/passenger/PassengerMapView';
@@ -24,6 +25,32 @@ const DEFAULT_FILTERS = {
   ev_charging: false,
 };
 
+const CENTER = { lat: 41.0369, lng: 28.985 };
+
+const distanceKm = (a, b) => {
+  const radius = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const hav =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return radius * 2 * Math.atan2(Math.sqrt(hav), Math.sqrt(1 - hav));
+};
+
+const normalizeDbVertiport = (vp) => ({
+  id: vp.id,
+  name: vp.name,
+  lat: Number(vp.lat),
+  lng: Number(vp.lng),
+  features: [],
+  suitabilityScore: Number(vp.suitability_score ?? 75),
+  pricePerKm: Number(vp.price_per_km ?? 3.5),
+  description: vp.description || 'Active vertiport from the SkyPort operational network.',
+  distanceFromCenter: Number(distanceKm(CENTER, { lat: Number(vp.lat), lng: Number(vp.lng) }).toFixed(1)),
+});
+
 const scoreColor = (score) => {
   if (score >= 85) return '#22c55e';
   if (score >= 70) return '#eab308';
@@ -36,6 +63,7 @@ const PassengerPage = () => {
   const [selectedVertiport, setSelectedVertiport] = useState(null);
   const [route, setRoute] = useState(null);
   const [flyToTarget, setFlyToTarget] = useState(null);
+  const [vertiports, setVertiports] = useState(MOCK_VERTIPORTS);
 
   // Favorites stored in localStorage
   const [favorites, setFavorites] = useState(() => {
@@ -51,9 +79,25 @@ const PassengerPage = () => {
     });
   };
 
+  useEffect(() => {
+    let alive = true;
+    axios.get('/api/vertiports')
+      .then((response) => {
+        if (!alive) return;
+        const active = Array.isArray(response.data) ? response.data.map(normalizeDbVertiport) : [];
+        if (active.length > 0) {
+          setVertiports(active);
+        }
+      })
+      .catch(() => {
+        if (alive) setVertiports(MOCK_VERTIPORTS);
+      });
+    return () => { alive = false; };
+  }, []);
+
   // Apply filters to vertiport list
   const filteredVertiports = useMemo(() => {
-    return MOCK_VERTIPORTS.filter((vp) => {
+    return vertiports.filter((vp) => {
       if (vp.distanceFromCenter > filters.maxDistance) return false;
       if (filters.metro && !vp.features.includes('metro')) return false;
       if (filters.low_noise && !vp.features.includes('low_noise')) return false;
@@ -61,7 +105,7 @@ const PassengerPage = () => {
       if (filters.ev_charging && !vp.features.includes('ev_charging')) return false;
       return true;
     });
-  }, [filters]);
+  }, [filters, vertiports]);
 
   const handleModeChange = (_, newMode) => {
     setActiveMode(newMode);
@@ -147,6 +191,7 @@ const PassengerPage = () => {
         <Fade in={activeMode === 'route'}>
           <Box sx={{ position: 'absolute', top: 0, left: 0, zIndex: 10, pointerEvents: activeMode === 'route' ? 'auto' : 'none' }}>
             <RoutePlanner
+              vertiports={vertiports}
               onRouteCalculated={setRoute}
               onClearRoute={() => setRoute(null)}
             />
@@ -158,6 +203,7 @@ const PassengerPage = () => {
           <Box sx={{ position: 'absolute', top: 0, right: 0, zIndex: 10, pointerEvents: activeMode === 'favorites' ? 'auto' : 'none' }}>
             <FavoritesSidebar
               favorites={favorites}
+              vertiports={vertiports}
               onToggle={toggleFavorite}
               onFlyTo={(vp) => setFlyToTarget(vp)}
             />

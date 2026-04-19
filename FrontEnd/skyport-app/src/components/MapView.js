@@ -13,6 +13,7 @@ import MyLocationIcon from '@mui/icons-material/MyLocation';
 import LayersIcon from '@mui/icons-material/Layers';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import CheckIcon from '@mui/icons-material/Check';
+import { getMapStyle, hasMapboxToken } from '../utils/mapStyle';
 
 const ISTANBUL_CENTER = [28.9784, 41.0082];
 const ISTANBUL_ZOOM = 10.5;
@@ -53,15 +54,13 @@ const MapView = () => {
     if (map.current) return;
 
     const token = process.env.REACT_APP_MAPBOX_TOKEN;
-    if (!token) {
-      console.error('REACT_APP_MAPBOX_TOKEN is not set. Please add it to your .env file.');
-      return;
+    if (hasMapboxToken()) {
+      mapboxgl.accessToken = token;
     }
-    mapboxgl.accessToken = token;
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: activeStyle,
+      style: hasMapboxToken() ? activeStyle : getMapStyle(),
       center: ISTANBUL_CENTER,
       zoom: ISTANBUL_ZOOM,
       attributionControl: false,
@@ -135,6 +134,10 @@ const MapView = () => {
 
   const switchStyle = (styleId) => {
     if (!map.current) return;
+    if (!hasMapboxToken()) {
+      setShowLayers(false);
+      return;
+    }
     setActiveStyle(styleId);
     map.current.setStyle(styleId);
     // Re-add bbox layer after style change

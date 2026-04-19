@@ -1,0 +1,72 @@
+[
+  {
+    "notam_number": "G2211/01",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "G2211/01 NOTAMN\nQ) LTXX/QXXXX/IV/BO /E /000/999/3918N03521E567\nA) LTAA LTBB B) 0109251345 C) PERM \nE) REF AIC B06/01 TARIH 04 EKIM 2001 SAYFA 13'DEKI RVSM ONAYLI       \nDEVLET HAVA"
+  },
+  {
+    "notam_number": "G2325/01",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "G2325/01 NOTAMN\nQ) LTXX/QXXXX/IV/NBO/E /000/999/3918N03521E567\nA) LTAA LTBB B) 0110051300 C) PERM \nE) REF AIC NO:B06/01 TARIH 04 EKIM 2001                              \n\nASAGIDAKI "
+  },
+  {
+    "notam_number": "G3741/06",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "G3741/06 NOTAMN\nQ) LTBB/QARXX/IV/BO /E /000/999/3926N02822E238\nA) LTBB B) 0610101200 C) PERM \nE) TUM ILGILILERE SEYRUSEFER UYARISI\nILGI: YUNANISTAN IN 02 EKIM 2006 TARIH VE 03/06 N"
+  },
+  {
+    "notam_number": "G4163/06",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "G4163/06 NOTAMN\nQ) LTBB/QAFXX/IV/BO /E /000/999/3926N02822E238\nA) LTBB B) 0611061400 C) PERM \nE) NAVIGATIONAL WARNING TO ALL CONCERNED:\nG/UG18,L/UL609,R/UR19 VE L/UL995 HAVA KORIDO"
+  },
+  {
+    "notam_number": "G1555/12",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "G1555/12 NOTAMN\nQ) LTBB/QMRXX/IV/NBO/A /000/999/4059N02849E005\nA) LTBA B) 1204021400 C) PERM\nE) ISTANBUL ATATURK HAVALIMANI,\nASAGIDA VERILEN 'RUZGAR YON VE SIDDETINE GORE KULLANILA"
+  },
+  {
+    "notam_number": "G4334/13",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "G4334/13 NOTAMN\nQ) LTBB/QGAXX/I /NBO/A /000/999/4054N02919E005\nA) LTFJ B) 1310170000 C) PERM\nE) SABIHA GOKCEN HAVALIMANI'NDAKI RNAV (GNSS) SID VE STAR'LARIN \nUYGULANMA GEREKSINIMLE"
+  },
+  {
+    "notam_number": "G1471/14",
+    "reason": "radius_too_large",
+    "q_or_icao_head": "G1471/14 NOTAMN\nQ) LTXX/QANLT/I /NBO/E /000/999/3839N03512E471\nA) LTAA LTBB B) 1404080000 C) PERM\nE) TEKNIK ZORLUKLAR NEDENIYLE VE DAHA IYI BOLGESEL ISBIRLIGI SAGLAMAK\n\nAMACIYLA P/"
+  },
+  {
+    "notam_number": "G4445/14",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "G4445/14 NOTAMN\nQ) LTBB/QMRXX/IV/NBO/A /000/999/4054N02919E005\nA) LTFJ B) 1409181452 C) PERM\nE) ISTANBUL SABIHA GOKCEN HAVALIMANI:\nAIP SUP 06/13 IPTAL EDILMISTIR."
+  },
+  {
+    "notam_number": "G4886/14",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "G4886/14 NOTAMR G3425/14\nQ) LTBB/QFAXX/IV/BO /A /000/999/4054N02919E005\nA) LTFJ B) 1410101352 C) 1501131500 EST\nE) KARGO APRONUNUN KUZEY DOGUSUNDA KALAN ASAGIDA KOORDINATLARI\nVERIL"
+  },
+  {
+    "notam_number": "G6497/14",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": " G6497/14 NOTAMN\nQ) LTXX/QXXXX/IV/NBO/E /000/999/3901N03524E465\nA) LTAA LTBB PART 1 OF 2 B) 1501010001 C) PERM\nE) AIC B01/15 2015 YILI UCRET TARIFESINDE YAPILAN DEGISIKLIKLER \nASAG"
+  },
+  {
+    "notam_number": "A5952/25",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "A5952/25 NOTAMN\nQ) LTXX/QAFXX/IV/NBO/E /000/999/3822N02559E357\nA) LTBB LGGG B) 2601020500 C) 2612311600\nE) NAVIGATIONAL WARNING TO ALL CONCERNED:\n\nREF(A) TURKISH WARNING NOTAM A593"
+  },
+  {
+    "notam_number": "A5953/25",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "A5953/25 NOTAMN\nQ) LTXX/QAFXX/IV/NBO/E /000/999/3822N02559E357\nA) LTBB LGGG B) 2601020500 C) 2612311600\nE) NAVIGATIONAL WARNING TO ALL CONCERNED:\n\nREF(A) TURKISH WARNING NOTAM A593"
+  },
+  {
+    "notam_number": "A5954/25",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "A5954/25 NOTAMN\nQ) LTXX/QAFXX/IV/NBO/E /000/999/3822N02559E357\nA) LTBB LGGG B) 2601020500 C) 2612311600\nE) NAVIGATIONAL WARNING TO ALL CONCERNED:\n\nREF(A) TURKISH WARNING NOTAM A593"
+  },
+  {
+    "notam_number": "A0138/26",
+    "reason": "generic_xx_non_restriction",
+    "q_or_icao_head": "A0138/26 NOTAMN\nQ) LTXX/QAFXX/IV/NBO/E /000/999/3822N02559E357\nA) LTBB LGGG B) 2601130800 C) 2612311600\nE) NAVIGATIONAL WARNING TO ALL CONCERNED:\n\nREF (A) TURKISH WARNING NOTAMS A5"
+  }
+]

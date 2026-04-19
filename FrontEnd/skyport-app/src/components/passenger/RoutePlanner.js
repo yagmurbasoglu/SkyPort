@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import {
   Box, Paper, Typography, Button, Divider, Autocomplete,
-  TextField, CircularProgress,
+  TextField, CircularProgress, Alert, Chip,
 } from '@mui/material';
 import FlightIcon from '@mui/icons-material/Flight';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import StraightenIcon from '@mui/icons-material/Straighten';
 import PaymentIcon from '@mui/icons-material/Payment';
-import { MOCK_VERTIPORTS, generateMockRoute } from '../../mock/vertiports';
+import AirIcon from '@mui/icons-material/Air';
+import axios from 'axios';
 
 const autoSx = {
   '& .MuiOutlinedInput-root': {
@@ -26,40 +27,62 @@ const autoSx = {
   '& .MuiAutocomplete-clearIndicator': { color: '#475569' },
 };
 
-const RoutePlanner = ({ onRouteCalculated, onClearRoute }) => {
+const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
   const [route, setRoute] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSwap = () => {
     setFrom(to);
     setTo(from);
     setRoute(null);
+    setError('');
     onClearRoute();
   };
 
-  /**
-   * TODO: Replace this mock with a real API call:
-   *   POST /api/route  { fromId: from.id, toId: to.id }
-   *   Expected response: { coordinates: [lng,lat][], distance_km, duration_min, price_tl }
-   */
-  const handleFindRoute = () => {
+  const handleFindRoute = async () => {
     if (!from || !to) return;
     setLoading(true);
-    // Simulate network delay
-    setTimeout(() => {
-      const result = generateMockRoute(from, to);
+    setError('');
+    try {
+      const usesDbVertiports = Number.isInteger(from.id) && Number.isInteger(to.id);
+      const endpointPayload = usesDbVertiports
+        ? { from_vertiport_id: from.id, to_vertiport_id: to.id }
+        : {
+            from_point: { lat: from.lat, lng: from.lng, name: from.name },
+            to_point: { lat: to.lat, lng: to.lng, name: to.name },
+          };
+      const response = await axios.post('/api/route', {
+        ...endpointPayload,
+        constraints: {
+          avoid_nfz: true,
+          avoid_obstacles: true,
+          max_wind_kmh: 35,
+        },
+      });
+      const result = {
+        ...response.data,
+        fromVertiport: from,
+        toVertiport: to,
+      };
       setRoute(result);
       onRouteCalculated(result);
+    } catch (err) {
+      setRoute(null);
+      onClearRoute();
+      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   const handleClear = () => {
     setFrom(null);
     setTo(null);
     setRoute(null);
+    setError('');
     onClearRoute();
   };
 
@@ -89,10 +112,10 @@ const RoutePlanner = ({ onRouteCalculated, onClearRoute }) => {
       <Box sx={{ p: 2 }}>
         {/* From selector */}
         <Autocomplete
-          options={MOCK_VERTIPORTS.filter((vp) => vp.id !== to?.id)}
+          options={vertiports.filter((vp) => vp.id !== to?.id)}
           getOptionLabel={(vp) => vp.name}
           value={from}
-          onChange={(_, val) => { setFrom(val); setRoute(null); onClearRoute(); }}
+          onChange={(_, val) => { setFrom(val); setRoute(null); setError(''); onClearRoute(); }}
           size="small"
           renderInput={(params) => (
             <TextField {...params} label="From" placeholder="Select departure" sx={autoSx} />
@@ -130,10 +153,10 @@ const RoutePlanner = ({ onRouteCalculated, onClearRoute }) => {
 
         {/* To selector */}
         <Autocomplete
-          options={MOCK_VERTIPORTS.filter((vp) => vp.id !== from?.id)}
+          options={vertiports.filter((vp) => vp.id !== from?.id)}
           getOptionLabel={(vp) => vp.name}
           value={to}
-          onChange={(_, val) => { setTo(val); setRoute(null); onClearRoute(); }}
+          onChange={(_, val) => { setTo(val); setRoute(null); setError(''); onClearRoute(); }}
           size="small"
           renderInput={(params) => (
             <TextField {...params} label="To" placeholder="Select arrival" sx={autoSx} />
@@ -172,19 +195,75 @@ const RoutePlanner = ({ onRouteCalculated, onClearRoute }) => {
           {loading ? 'Calculating...' : 'Find Route'}
         </Button>
 
+        {error && <Alert severity="error" sx={{ mt: 1.5, fontSize: '0.72rem' }}>{error}</Alert>}
+
         {/* Route result */}
         {route && (
           <>
             <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
-            <Typography sx={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', mb: 1.5 }}>
-              Route Details
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+              <Typography sx={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+                Route Details
+              </Typography>
+              <Chip
+                label={route.safety_status || 'simulated'}
+                size="small"
+                sx={{
+                  height: 20,
+                  fontSize: '0.62rem',
+                  color: route.is_safe ? '#86efac' : '#fca5a5',
+                  background: route.is_safe ? 'rgba(34,197,94,0.16)' : 'rgba(239,68,68,0.16)',
+                  fontWeight: 700,
+                }}
+              />
+            </Box>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
               <StatBox icon={<StraightenIcon sx={{ fontSize: 14, color: '#60a5fa' }} />} label="Distance" value={`${route.distance_km} km`} />
               <StatBox icon={<AccessTimeIcon sx={{ fontSize: 14, color: '#34d399' }} />} label="Duration" value={`${route.duration_min} min`} />
-              <StatBox icon={<PaymentIcon sx={{ fontSize: 14, color: '#f59e0b' }} />} label="Price" value={`₺${route.price_tl}`} />
+              <StatBox icon={<PaymentIcon sx={{ fontSize: 14, color: '#f59e0b' }} />} label="Price" value={`${route.price_tl} TL`} />
             </Box>
+
+            {route.warnings?.length > 0 && (
+              <Alert severity="warning" sx={{ mt: 1.5, fontSize: '0.72rem' }}>
+                {route.warnings.slice(0, 2).join(' ')}
+              </Alert>
+            )}
+
+            {route.weather && (
+              <Box sx={{ mt: 1.5, background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)', p: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.8 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
+                    <AirIcon sx={{ fontSize: 14, color: '#38bdf8' }} />
+                    <Typography sx={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Weather
+                    </Typography>
+                  </Box>
+                  <Typography sx={{ fontSize: '0.62rem', color: route.weather.is_fallback ? '#fbbf24' : '#86efac', fontWeight: 700 }}>
+                    {route.weather.source === 'open_meteo' ? 'Open-Meteo' : 'Fallback'}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.7 }}>
+                  <WeatherMetric label="10m wind" value={formatWind(route.weather.wind_kmh)} />
+                  <WeatherMetric label="80m wind" value={formatWind(route.weather.wind_80m_kmh)} />
+                  <WeatherMetric label="120m wind" value={formatWind(route.weather.wind_120m_kmh)} />
+                  <WeatherMetric label="Gust" value={formatWind(route.weather.wind_gusts_kmh)} />
+                </Box>
+                <Typography sx={{ mt: 0.8, fontSize: '0.66rem', color: '#64748b', textTransform: 'capitalize' }}>
+                  Condition: {route.weather.condition || 'standard'}
+                </Typography>
+              </Box>
+            )}
+
+            {route.conflicts?.length > 0 && (
+              <Box sx={{ mt: 1.5 }}>
+                {route.conflicts.slice(0, 2).map((conflict, index) => (
+                  <Typography key={`${conflict.type}-${index}`} sx={{ fontSize: '0.7rem', color: conflict.severity === 'blocker' ? '#fca5a5' : '#fbbf24', lineHeight: 1.5 }}>
+                    {conflict.message}
+                  </Typography>
+                ))}
+              </Box>
+            )}
 
             <Button
               fullWidth size="small"
@@ -212,6 +291,15 @@ const StatBox = ({ icon, label, value }) => (
     <Box sx={{ display: 'flex', justifyContent: 'center', mb: 0.5 }}>{icon}</Box>
     <Typography sx={{ fontSize: '0.6rem', color: '#475569', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{label}</Typography>
     <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0', mt: 0.2 }}>{value}</Typography>
+  </Box>
+);
+
+const formatWind = (value) => (value === null || value === undefined ? 'n/a' : `${Number(value).toFixed(1)} km/h`);
+
+const WeatherMetric = ({ label, value }) => (
+  <Box sx={{ background: 'rgba(15,23,42,0.5)', borderRadius: '6px', p: 0.7 }}>
+    <Typography sx={{ fontSize: '0.56rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</Typography>
+    <Typography sx={{ fontSize: '0.68rem', color: '#cbd5e1', fontWeight: 700 }}>{value}</Typography>
   </Box>
 );
 

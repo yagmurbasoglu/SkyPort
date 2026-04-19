@@ -3,10 +3,10 @@ import { Box, Paper, Typography, IconButton, Tooltip, Chip, Divider } from '@mui
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
-import { MOCK_VERTIPORTS, FEATURE_ICONS } from '../../mock/vertiports';
+import { FEATURE_ICONS } from '../../mock/vertiports';
 
-const FavoritesSidebar = ({ favorites, onToggle, onFlyTo }) => {
-  const favoriteVertiports = MOCK_VERTIPORTS.filter((vp) => favorites.includes(vp.id));
+const FavoritesSidebar = ({ favorites, vertiports = [], onToggle, onFlyTo }) => {
+  const favoriteVertiports = vertiports.filter((vp) => favorites.includes(vp.id));
 
   return (
     <Paper

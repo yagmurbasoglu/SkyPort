@@ -1,0 +1,30 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_code": "NOTAM-LT-2026-0001",
+        "zone_name": "Temporary Restriction Demo",
+        "zone_type": "RESTRICTED",
+        "lower_limit": "GND",
+        "upper_limit": "FL080",
+        "effective_from": "2026-04-10T00:00:00Z",
+        "effective_to": "2026-04-30T23:59:59Z",
+        "is_active": true
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [29.0040, 41.0380],
+            [29.0160, 41.0380],
+            [29.0160, 41.0480],
+            [29.0040, 41.0480],
+            [29.0040, 41.0380]
+          ]
+        ]
+      }
+    }
+  ]
+}

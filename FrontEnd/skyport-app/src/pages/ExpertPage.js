@@ -8,6 +8,7 @@ import AnalyticsIcon from '@mui/icons-material/Analytics';
 import MapIcon from '@mui/icons-material/Map';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
+import ExpertAnalysisPage from '../components/expert/ExpertAnalysisPage';
 
 const glassCard = {
   background: 'rgba(10, 18, 35, 0.92)',
@@ -30,6 +31,8 @@ const inputSx = {
   '& .MuiInputLabel-root': { color: '#64748b' },
 };
 
+// Kept temporarily while the RAD/SDD-aligned expert workflow is served from ExpertAnalysisPage.
+// eslint-disable-next-line no-unused-vars
 const ExpertPage = () => {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
@@ -214,4 +217,4 @@ const ExpertPage = () => {
   );
 };
 
-export default ExpertPage;
+export default ExpertAnalysisPage;

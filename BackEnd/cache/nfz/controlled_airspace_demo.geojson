@@ -1,0 +1,131 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "airspace_class": "CTR",
+        "zone_code": "LTFM_CTR",
+        "zone_name": "Istanbul Airport CTR",
+        "lower_limit": "SFC",
+        "upper_limit": "1500 FT AMSL",
+        "effective_from": null,
+        "effective_to": null,
+        "is_active": true,
+        "source_note": "DHMİ AIP LT AD 2 LTFM_en AD 2.17; polygonized for backend advisory layer"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [28.6200, 41.3400],
+            [28.6700, 41.3600],
+            [28.7600, 41.3600],
+            [28.8400, 41.3400],
+            [28.9000, 41.3000],
+            [28.9100, 41.2500],
+            [28.8700, 41.2100],
+            [28.7900, 41.1900],
+            [28.7000, 41.2000],
+            [28.6400, 41.2300],
+            [28.6100, 41.2800],
+            [28.6200, 41.3400]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "airspace_class": "CTR",
+        "zone_code": "LTBA_CTR",
+        "zone_name": "Yesilkoy CTR",
+        "lower_limit": "SFC",
+        "upper_limit": "1500 FT AMSL",
+        "effective_from": null,
+        "effective_to": null,
+        "is_active": true,
+        "source_note": "DHMİ AIP LT AD 2 LTBA_en AD 2.17; polygonized for backend advisory layer"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [28.6700, 41.0500],
+            [28.7300, 41.0700],
+            [28.8100, 41.0700],
+            [28.8800, 41.0500],
+            [28.9200, 41.0200],
+            [28.9300, 40.9800],
+            [28.9000, 40.9400],
+            [28.8400, 40.9200],
+            [28.7600, 40.9200],
+            [28.7000, 40.9400],
+            [28.6700, 40.9800],
+            [28.6700, 41.0500]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "airspace_class": "CTR",
+        "zone_code": "LTFJ_CTR",
+        "zone_name": "Sabiha Gokcen CTR",
+        "lower_limit": "SFC",
+        "upper_limit": "2500 FT AMSL",
+        "effective_from": null,
+        "effective_to": null,
+        "is_active": true,
+        "source_note": "DHMİ AIP LT AD 2 LTFJ_en AD 2.17; polygonized for backend advisory layer"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [29.1700, 40.9500],
+            [29.2300, 40.9700],
+            [29.3100, 40.9700],
+            [29.3800, 40.9500],
+            [29.4200, 40.9200],
+            [29.4300, 40.8800],
+            [29.4000, 40.8500],
+            [29.3400, 40.8300],
+            [29.2600, 40.8300],
+            [29.2000, 40.8500],
+            [29.1700, 40.8900],
+            [29.1700, 40.9500]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "airspace_class": "CTR",
+        "zone_code": "LTDB_CTR",
+        "zone_name": "Cukurova CTR",
+        "lower_limit": "SFC",
+        "upper_limit": "2000 FT AMSL",
+        "effective_from": null,
+        "effective_to": null,
+        "is_active": true,
+        "source_note": "DHMİ AIP LT AD 2 LTDB_en AD 2.17"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [35.0641667, 37.0788889],
+            [35.2361111, 37.0622222],
+            [35.1813889, 36.9008333],
+            [35.0511111, 36.7302778],
+            [34.8675000, 36.8202778],
+            [35.0641667, 37.0788889]
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -101,6 +101,8 @@ const PassengerMapView = ({
     const token = process.env.REACT_APP_MAPBOX_TOKEN;
     if (hasMapboxToken()) {
       mapboxgl.accessToken = token;
+    } else {
+      mapboxgl.accessToken = 'not-required-for-osm-raster-style';
     }
 
     map.current = new mapboxgl.Map({
@@ -115,6 +117,7 @@ const PassengerMapView = ({
 
     map.current.on('load', () => {
       setMapLoaded(true);
+      map.current.resize();
       map.current.addSource('passenger-airspace-overlay', {
         type: 'geojson',
         data: emptyCollection,
@@ -346,7 +349,7 @@ const PassengerMapView = ({
   return (
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
       {/* Map canvas */}
-      <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+      <div ref={mapContainer} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
 
       {/* Coordinate bar — bottom center */}
       <Paper

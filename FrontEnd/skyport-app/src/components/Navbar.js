@@ -2,7 +2,6 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Box, Typography, Button, Chip } from '@mui/material';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
-import MapIcon from '@mui/icons-material/Map';
 import HomeIcon from '@mui/icons-material/Home';
 
 const Navbar = () => {
@@ -93,7 +92,7 @@ const Navbar = () => {
           </Typography>
         </Box>
 
-        {isMap ? (
+        {isMap && (
           <Button
             startIcon={<HomeIcon />}
             onClick={() => navigate('/')}
@@ -106,23 +105,6 @@ const Navbar = () => {
             }}
           >
             Home
-          </Button>
-        ) : (
-          <Button
-            startIcon={<MapIcon />}
-            onClick={() => navigate('/map')}
-            size="small"
-            variant="contained"
-            sx={{
-              textTransform: 'none',
-              fontSize: '0.78rem',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              boxShadow: '0 4px 14px rgba(59,130,246,0.35)',
-              '&:hover': { boxShadow: '0 4px 20px rgba(59,130,246,0.5)' },
-            }}
-          >
-            Launch Analysis
           </Button>
         )}
       </Box>

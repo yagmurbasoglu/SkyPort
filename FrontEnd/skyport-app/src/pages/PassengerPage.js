@@ -189,7 +189,7 @@ const PassengerPage = () => {
 
         {/* ── Route Planner — shown in Route mode ── */}
         <Fade in={activeMode === 'route'}>
-          <Box sx={{ position: 'absolute', top: 0, left: 0, zIndex: 10, pointerEvents: activeMode === 'route' ? 'auto' : 'none' }}>
+          <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
             <RoutePlanner
               vertiports={vertiports}
               onRouteCalculated={setRoute}

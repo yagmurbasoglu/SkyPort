@@ -27,6 +27,26 @@ const autoSx = {
   '& .MuiAutocomplete-clearIndicator': { color: '#475569' },
 };
 
+const scrollSx = {
+  scrollbarWidth: 'thin',
+  scrollbarColor: 'rgba(148,163,184,0.58) rgba(15,23,42,0.34)',
+  '&::-webkit-scrollbar': {
+    width: 10,
+  },
+  '&::-webkit-scrollbar-track': {
+    background: 'rgba(15,23,42,0.34)',
+    borderRadius: '8px',
+  },
+  '&::-webkit-scrollbar-thumb': {
+    background: 'rgba(148,163,184,0.58)',
+    borderRadius: '8px',
+    border: '2px solid rgba(15,23,42,0.34)',
+  },
+  '&::-webkit-scrollbar-thumb:hover': {
+    background: 'rgba(203,213,225,0.72)',
+  },
+};
+
 const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
@@ -90,15 +110,20 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
     <Paper
       sx={{
         position: 'absolute',
-        top: 72,
+        top: { xs: 72, md: '50%' },
         left: 16,
+        transform: { xs: 'none', md: 'translateY(-50%)' },
         zIndex: 10,
-        width: 270,
+        pointerEvents: 'auto',
+        width: { xs: 'calc(100vw - 48px)', sm: 320 },
         background: 'rgba(10, 18, 35, 0.92)',
         backdropFilter: 'blur(14px)',
         border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: '14px',
-        overflow: 'hidden',
+        maxHeight: { xs: 'calc(100vh - 96px)', md: 'calc(100vh - 180px)' },
+        overflowX: 'hidden',
+        overflowY: 'auto',
+        ...scrollSx,
       }}
     >
       {/* Header */}

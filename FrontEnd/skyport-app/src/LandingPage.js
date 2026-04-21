@@ -63,12 +63,6 @@ const LandingPage = () => {
             >
               <span className="text-xl">⬡</span> Start Analysis
             </button>
-            <button
-              onClick={() => navigate('/passenger')}
-              className="group flex items-center gap-2 border border-purple-500/50 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 px-8 py-4 rounded-lg text-lg font-bold transition-all duration-300 transform hover:scale-105 backdrop-blur-sm shadow-[0_0_15px_rgba(168,85,247,0.1)]"
-            >
-              <span className="text-xl">✈</span> Launch Navigation
-            </button>
           </div>
         </div>
       </section>

@@ -64,6 +64,26 @@ const panelSx = {
   boxShadow: '0 10px 32px rgba(0,0,0,0.35)',
 };
 
+const scrollPanelSx = {
+  scrollbarWidth: 'thin',
+  scrollbarColor: 'rgba(148,163,184,0.42) rgba(15,23,42,0.28)',
+  '&::-webkit-scrollbar': {
+    width: 7,
+  },
+  '&::-webkit-scrollbar-track': {
+    background: 'rgba(15,23,42,0.28)',
+    borderRadius: '8px',
+  },
+  '&::-webkit-scrollbar-thumb': {
+    background: 'rgba(148,163,184,0.42)',
+    borderRadius: '8px',
+    border: '2px solid rgba(15,23,42,0.28)',
+  },
+  '&::-webkit-scrollbar-thumb:hover': {
+    background: 'rgba(203,213,225,0.58)',
+  },
+};
+
 const fieldSx = {
   '& .MuiOutlinedInput-root': {
     color: '#e2e8f0',
@@ -764,7 +784,7 @@ const ExpertAnalysisPage = () => {
         </Box>
       </Paper>
 
-      <Paper sx={{ ...panelSx, position: 'absolute', top: 92, left: 16, zIndex: 20, width: { xs: 'calc(100% - 32px)', md: 390 }, maxHeight: 'calc(100vh - 124px)', overflow: 'auto', p: 2 }}>
+      <Paper sx={{ ...panelSx, ...scrollPanelSx, position: 'absolute', top: 92, left: 16, zIndex: 20, width: { xs: 'calc(100% - 32px)', md: 390 }, maxHeight: 'calc(100vh - 124px)', overflow: 'auto', p: 2 }}>
         <Stack spacing={2}>
           <Box>
             <Typography sx={{ color: '#e2e8f0', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -932,7 +952,7 @@ const ExpertAnalysisPage = () => {
         </Stack>
       </Paper>
 
-      <Paper sx={{ ...panelSx, position: 'absolute', top: 92, right: 16, zIndex: 20, width: { xs: 'calc(100% - 32px)', md: 380 }, maxHeight: 'calc(100vh - 124px)', overflow: 'auto', p: 2 }}>
+      <Paper sx={{ ...panelSx, ...scrollPanelSx, position: 'absolute', top: 92, right: 16, zIndex: 20, width: { xs: 'calc(100% - 32px)', md: 380 }, maxHeight: 'calc(100vh - 124px)', overflow: 'auto', p: 2 }}>
         <Stack spacing={2}>
           <Typography sx={{ color: '#e2e8f0', fontWeight: 800 }}>Analysis Results</Typography>
           {!analysisResult && <Typography sx={{ color: '#94a3b8', fontSize: '0.82rem' }}>Results appear after the heatmap is generated.</Typography>}

@@ -35,6 +35,18 @@ class IngestStatusResponse(BaseModel):
     finished_at: datetime | None
 
 
+class GeoFeatureCollection(BaseModel):
+    type: Literal["FeatureCollection"] = "FeatureCollection"
+    features: list[dict]
+
+
+class IngestLayersResponse(BaseModel):
+    job_id: str
+    layer_counts: dict[str, int]
+    buildings: GeoFeatureCollection
+    roads: GeoFeatureCollection
+
+
 class AirspaceOverlayResponse(BaseModel):
     type: Literal["FeatureCollection"]
     features: list[dict]

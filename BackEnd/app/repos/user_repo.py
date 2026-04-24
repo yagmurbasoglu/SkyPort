@@ -1,5 +1,7 @@
 from typing import Optional
 
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.user import User
@@ -12,7 +14,8 @@ class UserRepository:
         self.db = db
 
     def get_by_email(self, email: str) -> Optional[User]:
-        return self.db.query(User).filter(User.email == email).first()
+        normalized_email = email.strip().lower()
+        return self.db.query(User).filter(func.lower(User.email) == normalized_email).first()
 
     def get_by_id(self, user_id: int) -> Optional[User]:
         return self.db.query(User).filter(User.id == user_id).first()
@@ -26,7 +29,11 @@ class UserRepository:
             is_active=obj_in.is_active,
         )
         self.db.add(db_obj)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            raise
         self.db.refresh(db_obj)
         return db_obj
 

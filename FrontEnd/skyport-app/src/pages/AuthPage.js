@@ -37,10 +37,43 @@ const formPartSx = {
   flex: 1,
 };
 
+const validatePassword = (value) => {
+  if (value.length < 8) return 'Password must be at least 8 characters long.';
+  if (!/[a-z]/.test(value)) return 'Password must include at least one lowercase letter.';
+  if (!/[A-Z]/.test(value)) return 'Password must include at least one uppercase letter.';
+  if (!/[0-9]/.test(value)) return 'Password must include at least one digit.';
+  return '';
+};
+
+const validateEmail = (value) => {
+  if (!value.trim()) return 'Email is required.';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'Please enter a valid email address.';
+  return '';
+};
+
+const validateFullName = (value) => {
+  if (value.trim().length < 2) return 'Full name must be at least 2 characters long.';
+  return '';
+};
+
+const getApiErrorMessage = (error, fallbackMessage) => {
+  const payload = error?.response?.data;
+  if (typeof payload?.message === 'string' && payload.message) {
+    return payload.message;
+  }
+  if (Array.isArray(payload?.detail) && payload.detail.length > 0) {
+    const firstError = payload.detail[0];
+    if (typeof firstError?.msg === 'string' && firstError.msg) {
+      return firstError.msg;
+    }
+  }
+  return fallbackMessage;
+};
+
 const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, register } = useAuth();
+  const { login, register, checkEmailAvailability } = useAuth();
 
   const initialMode = location.state?.mode || defaultMode;
   const [mode, setMode] = useState(initialMode); // 'login' | 'register'
@@ -59,11 +92,28 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
     else navigate('/');
   };
 
-  const handleAccountNext = () => {
-    if (!email || !password) { setError('Please fill in all fields.'); return; }
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
-    setError('');
-    setStep(1);
+  const handleAccountNext = async () => {
+    const nameError = validateFullName(name);
+    if (nameError) { setError(nameError); return; }
+    const emailError = validateEmail(email);
+    if (emailError) { setError(emailError); return; }
+    if (!password) { setError('Please fill in all fields.'); return; }
+    const passwordError = validatePassword(password);
+    if (passwordError) { setError(passwordError); return; }
+    setLoading(true);
+    try {
+      const isAvailable = await checkEmailAvailability(email);
+      if (!isAvailable) {
+        setError('The user with this email already exists in the system.');
+        return;
+      }
+      setError('');
+      setStep(1);
+    } catch (e) {
+      setError(getApiErrorMessage(e, 'Could not verify email availability. Please try again.'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogin = async () => {
@@ -73,7 +123,7 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
       setStep(1);
       setTimeout(() => redirectByRole(user.role), 1200);
     } catch (e) {
-      setError('Login failed. Please try again.');
+      setError(getApiErrorMessage(e, 'Login failed. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -81,13 +131,19 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
 
   const handleRegister = async () => {
     if (!selectedRole) { setError('Please select a role.'); return; }
+    const nameError = validateFullName(name);
+    if (nameError) { setError(nameError); return; }
+    const emailError = validateEmail(email);
+    if (emailError) { setError(emailError); return; }
+    const passwordError = validatePassword(password);
+    if (passwordError) { setError(passwordError); return; }
     setLoading(true);
     try {
       const user = await register({ email, password, name, role: selectedRole });
       setStep(2);
       setTimeout(() => redirectByRole(user.role), 1500);
     } catch (e) {
-      setError('Registration failed. Please try again.');
+      setError(getApiErrorMessage(e, 'Registration failed. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -209,11 +265,17 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
                   onChange={(e) => setName(e.target.value)}
                   sx={inputSx} size="small"
                 />
+                <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#64748b', lineHeight: 1.5 }}>
+                  Enter at least 2 characters. Example: Ada Yilmaz
+                </Typography>
                 <TextField
                   label="Email" type="email" fullWidth value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   sx={{ ...inputSx, mt: 2 }} size="small"
                 />
+                <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#64748b', lineHeight: 1.5 }}>
+                  Use a valid format like name@example.com
+                </Typography>
                 <TextField
                   label="Password" type={showPassword ? 'text' : 'password'} fullWidth value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -228,8 +290,11 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
                     ),
                   }}
                 />
-                <Button fullWidth variant="contained" sx={primaryBtnSx} onClick={handleAccountNext}>
-                  Continue
+                <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#64748b', lineHeight: 1.5 }}>
+                  Use at least 8 characters with uppercase, lowercase, and a number.
+                </Typography>
+                <Button fullWidth variant="contained" sx={primaryBtnSx} onClick={handleAccountNext} disabled={loading}>
+                  {loading ? 'Checking...' : 'Continue'}
                 </Button>
               </Box>
             )}

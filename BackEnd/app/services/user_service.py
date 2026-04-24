@@ -1,6 +1,7 @@
 from typing import Optional
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 
 from app.repos.user_repo import UserRepository
@@ -26,7 +27,13 @@ class UserService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="The user with this email already exists in the system.",
             )
-        return self.repo.create(user_in)
+        try:
+            return self.repo.create(user_in)
+        except IntegrityError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The user with this email already exists in the system.",
+            )
 
     def update_user(self, current_user: User, user_in: UserUpdate) -> User:
         update_data = user_in.model_dump(exclude_unset=True)

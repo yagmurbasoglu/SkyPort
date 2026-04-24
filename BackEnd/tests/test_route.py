@@ -34,7 +34,7 @@ def _route_repo_stubs(monkeypatch):
             "user_id": kwargs["user_id"],
             "from_vertiport_id": kwargs["from_vertiport_id"],
             "to_vertiport_id": kwargs["to_vertiport_id"],
-            "status": "simulated",
+            "status": kwargs.get("status", "simulated"),
             "distance_km": round(kwargs["distance_km"], 2),
             "duration_min": kwargs["duration_min"],
             "price_tl": kwargs["price_tl"],
@@ -62,8 +62,16 @@ def _route_repo_stubs(monkeypatch):
     monkeypatch.setattr(route_repo, "get_route", get_route)
     monkeypatch.setattr(route_repo, "update_route_status", update_route_status)
     monkeypatch.setattr(route_repo, "count_nfz_intersections_for_coordinates", lambda _coordinates: 0)
+    monkeypatch.setattr(route_repo, "list_nfz_intersections_for_coordinates", lambda _coordinates: [])
     monkeypatch.setattr(route_repo, "list_nfz_intersections", lambda _route_id: [])
+    monkeypatch.setattr(route_repo, "list_controlled_airspace_intersections_for_coordinates", lambda _coordinates: [])
     monkeypatch.setattr(route_repo, "list_controlled_airspace_intersections", lambda _route_id: [])
+    monkeypatch.setattr(route_repo, "load_recent_building_obstacles", lambda: [])
+    monkeypatch.setattr(
+        route_repo,
+        "list_building_obstacle_intersections_for_coordinates",
+        lambda _coordinates, max_hits=10, obstacle_features=None: [],
+    )
     monkeypatch.setattr(route_repo, "list_building_obstacle_intersections", lambda _route_id: [])
     monkeypatch.setattr(
         WeatherService,
@@ -112,6 +120,10 @@ def test_create_route_from_points_returns_simulation_payload(_route_repo_stubs) 
     assert body["route_id"] == 42
     assert body["safety_status"] == "warning"
     assert body["is_safe"] is True
+    assert body["obstacle_data_status"] == "missing"
+    assert body["obstacle_feature_count"] == 0
+    assert body["blocking_type"] is None
+    assert body["blocking_reason"] is None
     assert len(body["coordinates"]) >= 2
     assert body["distance_km"] > 0
     assert body["duration_min"] >= 3
@@ -173,6 +185,52 @@ def test_create_route_uses_astar_grid_when_direct_edge_is_blocked(monkeypatch, _
     assert calls["count"] > 2
 
 
+def test_create_route_checks_obstacle_edges_before_selecting_route(monkeypatch, _route_repo_stubs) -> None:
+    _as_user("passenger")
+    calls = {"count": 0}
+    obstacle_features = [{"geometry": object(), "zone_name": "Tower", "job_id": "job-1"}]
+
+    monkeypatch.setattr(route_repo, "load_recent_building_obstacles", lambda: obstacle_features)
+
+    def obstacle_hits(coordinates, *, max_hits=10, obstacle_features=None):
+        calls["count"] += 1
+        start, end = coordinates[0], coordinates[-1]
+        crosses_middle = start[0] < 29.0 < end[0] or end[0] < 29.0 < start[0]
+        near_direct_corridor = abs(start[1] - 41.0) < 0.015 and abs(end[1] - 41.0) < 0.015
+        if obstacle_features and crosses_middle and near_direct_corridor:
+            return [
+                {
+                    "id": None,
+                    "zone_name": "Tower obstacle",
+                    "route_progress": 0.5,
+                    "block_point": {"type": "Point", "coordinates": [29.0, 41.0]},
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(
+        route_repo,
+        "list_building_obstacle_intersections_for_coordinates",
+        obstacle_hits,
+    )
+
+    payload = {
+        "from_point": {"lat": 41.0, "lng": 28.98, "name": "West"},
+        "to_point": {"lat": 41.0, "lng": 29.02, "name": "East"},
+        "constraints": {"avoid_nfz": False, "avoid_obstacles": True, "max_wind_kmh": 35},
+    }
+
+    response = client.post("/api/route", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["safety_status"] == "blocked"
+    assert body["blocking_type"] == "obstacle"
+    assert body["obstacle_data_status"] == "available"
+    assert len(body["coordinates"]) > 3
+    assert calls["count"] > 2
+
+
 def test_safety_check_marks_nfz_intersection_unsafe(monkeypatch, _route_repo_stubs) -> None:
     _as_user("expert")
     client.post("/api/route", json=_point_payload())
@@ -194,8 +252,12 @@ def test_safety_check_marks_nfz_intersection_unsafe(monkeypatch, _route_repo_stu
 
     assert response.status_code == 200
     body = response.json()
-    assert body["safety_status"] == "unsafe"
+    assert body["safety_status"] == "blocked"
     assert body["is_safe"] is False
+    assert body["blocking_type"] == "nfz"
+    assert body["blocking_reason"] == "Blocked by no-fly zone."
+    assert body["stop_progress"] == 0.42
+    assert body["stop_point"] == [29.0, 41.0]
     assert body["conflicts"][0]["type"] == "nfz"
     assert body["conflicts"][0]["severity"] == "blocker"
     assert body["conflicts"][0]["route_progress"] == 0.42
@@ -222,12 +284,96 @@ def test_safety_check_marks_building_obstacle_intersection_unsafe(monkeypatch, _
 
     assert response.status_code == 200
     body = response.json()
-    assert body["safety_status"] == "unsafe"
+    assert body["safety_status"] == "blocked"
     assert body["is_safe"] is False
+    assert body["blocking_type"] == "obstacle"
+    assert body["blocking_reason"] == "Blocked by obstacle geometry."
+    assert body["stop_progress"] == 0.35
+    assert body["stop_point"] == [28.99, 41.03]
     assert body["conflicts"][0]["type"] == "obstacle"
     assert body["conflicts"][0]["zone_name"] == "Hospital roof obstacle"
     assert body["conflicts"][0]["route_progress"] == 0.35
     assert body["conflicts"][0]["block_point"] == [28.99, 41.03]
+
+
+def test_safety_check_keeps_controlled_airspace_as_warning(monkeypatch, _route_repo_stubs) -> None:
+    _as_user("expert")
+    client.post("/api/route", json=_point_payload())
+    monkeypatch.setattr(
+        route_repo,
+        "list_controlled_airspace_intersections",
+        lambda _route_id: [
+            {
+                "id": 3,
+                "zone_name": "CTR Blue Zone",
+                "zone_code": "CTR-1",
+            }
+        ],
+    )
+
+    response = client.post("/api/route/42/safety-check")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["safety_status"] == "warning"
+    assert body["is_safe"] is True
+    assert body["blocking_type"] is None
+    assert body["obstacle_data_status"] == "missing"
+    assert body["conflicts"][0]["type"] == "controlled_airspace"
+    assert body["conflicts"][0]["severity"] == "warning"
+
+
+def test_create_route_reports_obstacle_data_availability(monkeypatch, _route_repo_stubs) -> None:
+    _as_user("passenger")
+    monkeypatch.setattr(
+        route_repo,
+        "load_recent_building_obstacles",
+        lambda: [{"geometry": object(), "zone_name": "Tower obstacle", "job_id": "job-1"}],
+    )
+
+    response = client.post("/api/route", json=_point_payload())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["obstacle_data_status"] == "available"
+    assert body["obstacle_feature_count"] == 1
+
+
+def test_create_route_marks_weather_blocked(monkeypatch, _route_repo_stubs) -> None:
+    _as_user("passenger")
+    monkeypatch.setattr(
+        WeatherService,
+        "get_route_weather",
+        lambda _self, _coordinates, _max_wind_kmh: {
+            "source": "open_meteo",
+            "condition": "windy",
+            "wind_kmh": 48.0,
+            "wind_direction_deg": None,
+            "wind_gusts_kmh": 55.0,
+            "wind_80m_kmh": 50.0,
+            "wind_80m_direction_deg": None,
+            "wind_120m_kmh": 52.0,
+            "wind_120m_direction_deg": None,
+            "temperature_2m_c": None,
+            "precipitation_mm": None,
+            "visibility_m": None,
+            "weather_code": None,
+            "is_fallback": False,
+            "is_safe": False,
+            "warning": "Wind levels exceed the configured limit.",
+        },
+    )
+
+    response = client.post("/api/route", json=_point_payload())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["safety_status"] == "blocked"
+    assert body["is_safe"] is False
+    assert body["blocking_type"] == "weather"
+    assert body["blocking_reason"] == "Blocked by weather conditions."
+    assert body["stop_progress"] == 0.06
+    assert body["stop_point"] == body["coordinates"][0]
 
 
 def test_route_simulation_returns_geojson(_route_repo_stubs) -> None:

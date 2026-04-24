@@ -4,8 +4,8 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-RouteStatus = Literal["simulated", "safe", "warning", "unsafe", "weather_risk"]
-SafetyStatus = Literal["safe", "warning", "unsafe", "weather_risk"]
+RouteStatus = Literal["simulated", "safe", "warning", "blocked", "unsafe", "weather_risk"]
+SafetyStatus = Literal["safe", "warning", "blocked", "unsafe", "weather_risk"]
 
 
 class RoutePoint(BaseModel):
@@ -75,6 +75,12 @@ class RouteResponse(BaseModel):
     status: RouteStatus
     safety_status: SafetyStatus
     is_safe: bool
+    obstacle_data_status: Literal["available", "missing"]
+    obstacle_feature_count: int
+    blocking_type: str | None = None
+    blocking_reason: str | None = None
+    stop_progress: float | None = None
+    stop_point: list[float] | None = None
     coordinates: list[list[float]]
     distance_km: float
     duration_min: int
@@ -91,6 +97,12 @@ class RouteSafetyResponse(BaseModel):
     route_id: int
     safety_status: SafetyStatus
     is_safe: bool
+    obstacle_data_status: Literal["available", "missing"]
+    obstacle_feature_count: int
+    blocking_type: str | None = None
+    blocking_reason: str | None = None
+    stop_progress: float | None = None
+    stop_point: list[float] | None = None
     conflicts: list[RouteConflict]
     warnings: list[str]
 
@@ -99,6 +111,12 @@ class RouteSimulationResponse(BaseModel):
     route_id: int
     status: RouteStatus
     safety_status: SafetyStatus
+    obstacle_data_status: Literal["available", "missing"]
+    obstacle_feature_count: int
+    blocking_type: str | None = None
+    blocking_reason: str | None = None
+    stop_progress: float | None = None
+    stop_point: list[float] | None = None
     distance_km: float
     duration_min: int
     price_tl: float

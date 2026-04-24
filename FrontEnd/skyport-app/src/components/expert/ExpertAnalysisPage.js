@@ -19,17 +19,22 @@ import {
   Typography,
 } from '@mui/material';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
+import ApartmentIcon from '@mui/icons-material/Apartment';
 import CloseIcon from '@mui/icons-material/Close';
 import CropFreeIcon from '@mui/icons-material/CropFree';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import DirectionsTransitIcon from '@mui/icons-material/DirectionsTransit';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import FmdGoodIcon from '@mui/icons-material/FmdGood';
+import LightModeIcon from '@mui/icons-material/LightMode';
 import LogoutIcon from '@mui/icons-material/Logout';
 import MapIcon from '@mui/icons-material/Map';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import RouteIcon from '@mui/icons-material/AltRoute';
 import ScienceIcon from '@mui/icons-material/Science';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import TuneIcon from '@mui/icons-material/Tune';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -100,14 +105,14 @@ const fieldSx = {
 const statusColor = (status) => {
   if (status === 'completed' || status === 'success') return '#22c55e';
   if (status === 'partial_success' || status === 'running') return '#f59e0b';
-  if (status === 'failed' || status === 'unsafe' || status === 'weather_risk') return '#ef4444';
+  if (status === 'failed' || status === 'blocked' || status === 'unsafe' || status === 'weather_risk') return '#ef4444';
   if (status === 'warning') return '#f97316';
   if (status === 'safe') return '#22c55e';
   return '#94a3b8';
 };
 
 const statusChipSx = (status) => {
-  if (status === 'unsafe' || status === 'failed' || status === 'weather_risk') {
+  if (status === 'blocked' || status === 'unsafe' || status === 'failed' || status === 'weather_risk') {
     return {
       bgcolor: 'rgba(239,68,68,0.24)',
       color: '#fecaca',
@@ -182,14 +187,47 @@ const routePointAt = (coordinates, progress) => {
 };
 
 const routeStopProgress = (route) => {
+  if (route?.stop_progress !== null && route?.stop_progress !== undefined) {
+    return Math.max(0.04, Math.min(0.98, Number(route.stop_progress)));
+  }
   const blocker = route?.conflicts?.find((conflict) => conflict.severity === 'blocker' && conflict.route_progress !== null && conflict.route_progress !== undefined);
   if (!blocker) return route?.is_safe === false ? 0.58 : 1;
   return Math.max(0.04, Math.min(0.98, Number(blocker.route_progress)));
 };
 
 const routeStopPoint = (route) => {
+  if (Array.isArray(route?.stop_point)) return route.stop_point;
   const blocker = route?.conflicts?.find((conflict) => conflict.severity === 'blocker' && Array.isArray(conflict.block_point));
   return blocker?.block_point || null;
+};
+
+const routeLineColor = (route) => {
+  if (route?.safety_status === 'safe') return '#22c55e';
+  if (route?.safety_status === 'warning') return '#f59e0b';
+  if (route?.safety_status === 'blocked' || route?.is_safe === false) return '#ef4444';
+  return '#f97316';
+};
+
+const buildingCollection = (geojson) => {
+  if (geojson?.type === 'FeatureCollection') return geojson;
+  return emptyCollection;
+};
+
+const applyRasterBasemapMode = (instance, mode) => {
+  if (!instance?.getLayer('osm')) return;
+  if (mode === 'light') {
+    instance.setPaintProperty('osm', 'raster-opacity', 1);
+    instance.setPaintProperty('osm', 'raster-brightness-min', 0);
+    instance.setPaintProperty('osm', 'raster-brightness-max', 1);
+    instance.setPaintProperty('osm', 'raster-saturation', 0);
+    instance.setPaintProperty('osm', 'raster-contrast', 0);
+    return;
+  }
+  instance.setPaintProperty('osm', 'raster-opacity', 1);
+  instance.setPaintProperty('osm', 'raster-brightness-min', 0.02);
+  instance.setPaintProperty('osm', 'raster-brightness-max', 0.42);
+  instance.setPaintProperty('osm', 'raster-saturation', -0.35);
+  instance.setPaintProperty('osm', 'raster-contrast', 0.18);
 };
 
 const ExpertAnalysisPage = () => {
@@ -216,6 +254,12 @@ const ExpertAnalysisPage = () => {
   const [analysis, setAnalysis] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [compareResult, setCompareResult] = useState(null);
+  const [baseTone, setBaseTone] = useState('dark');
+  const [mapControlsOpen, setMapControlsOpen] = useState(false);
+  const [buildingLayer, setBuildingLayer] = useState(emptyCollection);
+  const [showBuildings, setShowBuildings] = useState(true);
+  const [roadLayer, setRoadLayer] = useState(emptyCollection);
+  const [showRoads, setShowRoads] = useState(true);
   const [routeForm, setRouteForm] = useState(DEFAULT_EXPERT_ROUTE);
   const [routePickMode, setRoutePickMode] = useState(null);
   const [routePoints, setRoutePoints] = useState(DEFAULT_ROUTE_POINTS);
@@ -310,14 +354,14 @@ const ExpertAnalysisPage = () => {
         type: 'fill',
         source: 'airspace-overlay',
         filter: ['==', ['get', 'zone_category'], 'controlled_airspace'],
-        paint: { 'fill-color': '#b65f70', 'fill-opacity': 0.18 },
+        paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.16 },
       });
       instance.addLayer({
         id: 'airspace-controlled-line',
         type: 'line',
         source: 'airspace-overlay',
         filter: ['==', ['get', 'zone_category'], 'controlled_airspace'],
-        paint: { 'line-color': '#e17b8f', 'line-width': 2 },
+        paint: { 'line-color': '#60a5fa', 'line-width': 2 },
       });
       instance.addLayer({
         id: 'analysis-heatmap-fill',
@@ -342,6 +386,26 @@ const ExpertAnalysisPage = () => {
         source: 'analysis-heatmap',
         paint: { 'line-color': 'rgba(255,255,255,0.45)', 'line-width': 0.7 },
       });
+      instance.addSource('expert-roads', { type: 'geojson', data: emptyCollection });
+      instance.addLayer({
+        id: 'expert-roads-line',
+        type: 'line',
+        source: 'expert-roads',
+        paint: { 'line-color': '#38bdf8', 'line-width': 1.7, 'line-opacity': 0.62 },
+      });
+      instance.addSource('expert-buildings', { type: 'geojson', data: emptyCollection });
+      instance.addLayer({
+        id: 'expert-buildings-fill',
+        type: 'fill',
+        source: 'expert-buildings',
+        paint: { 'fill-color': '#e2e8f0', 'fill-opacity': 0.22 },
+      });
+      instance.addLayer({
+        id: 'expert-buildings-line',
+        type: 'line',
+        source: 'expert-buildings',
+        paint: { 'line-color': '#f8fafc', 'line-width': 1.2, 'line-opacity': 0.82 },
+      });
       instance.addSource('expert-route', { type: 'geojson', data: emptyCollection });
       instance.addLayer({
         id: 'expert-route-line',
@@ -362,6 +426,7 @@ const ExpertAnalysisPage = () => {
         },
       });
       fetchAirspace(ISTANBUL_AIRSPACE_BOUNDS);
+      applyRasterBasemapMode(instance, 'dark');
     });
     return () => {
       if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
@@ -410,6 +475,44 @@ const ExpertAnalysisPage = () => {
     });
   }, [mapReady, routePoints]);
 
+  useEffect(() => {
+    if (!mapReady || !map.current) return;
+    const source = map.current.getSource('expert-buildings');
+    if (!source) return;
+    source.setData(buildingCollection(buildingLayer));
+  }, [buildingLayer, mapReady]);
+
+  useEffect(() => {
+    if (!mapReady || !map.current) return;
+    const source = map.current.getSource('expert-roads');
+    if (!source) return;
+    source.setData(buildingCollection(roadLayer));
+  }, [mapReady, roadLayer]);
+
+  useEffect(() => {
+    if (!mapReady || !map.current) return;
+    const visibility = showBuildings ? 'visible' : 'none';
+    if (map.current.getLayer('expert-buildings-fill')) {
+      map.current.setLayoutProperty('expert-buildings-fill', 'visibility', visibility);
+    }
+    if (map.current.getLayer('expert-buildings-line')) {
+      map.current.setLayoutProperty('expert-buildings-line', 'visibility', visibility);
+    }
+  }, [mapReady, showBuildings]);
+
+  useEffect(() => {
+    if (!mapReady || !map.current) return;
+    const visibility = showRoads ? 'visible' : 'none';
+    if (map.current.getLayer('expert-roads-line')) {
+      map.current.setLayoutProperty('expert-roads-line', 'visibility', visibility);
+    }
+  }, [mapReady, showRoads]);
+
+  useEffect(() => {
+    if (!mapReady || !map.current) return;
+    applyRasterBasemapMode(map.current, baseTone);
+  }, [baseTone, mapReady]);
+
   const setHeatmap = useCallback((geojson) => {
     const source = map.current?.getSource('analysis-heatmap');
     if (!source) return;
@@ -421,11 +524,24 @@ const ExpertAnalysisPage = () => {
     }
   }, []);
 
+  const loadIngestLayers = useCallback(async (jobId) => {
+    if (!jobId) return;
+    try {
+      const response = await axios.get(`/api/geodata/ingest/${jobId}/layers`);
+      setBuildingLayer(buildingCollection(response.data.buildings));
+      setRoadLayer(buildingCollection(response.data.roads));
+    } catch (_err) {
+      setBuildingLayer(emptyCollection);
+      setRoadLayer(emptyCollection);
+    }
+  }, []);
+
   const setRouteLayer = useCallback((route) => {
     const source = map.current?.getSource('expert-route');
     if (!source) return;
     if (!route?.coordinates?.length) {
       source.setData(emptyCollection);
+      map.current?.setPaintProperty('expert-route-line', 'line-color', '#f97316');
       if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
       if (aircraftMarkerRef.current) {
         aircraftMarkerRef.current.remove();
@@ -438,13 +554,14 @@ const ExpertAnalysisPage = () => {
       geometry: { type: 'LineString', coordinates: route.coordinates },
       properties: { route_id: route.route_id, safety_status: route.safety_status },
     });
+    map.current?.setPaintProperty('expert-route-line', 'line-color', routeLineColor(route));
     const bounds = new mapboxgl.LngLatBounds();
     route.coordinates.forEach((coord) => bounds.extend(coord));
     map.current.fitBounds(bounds, { padding: 82, duration: 900 });
 
     if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
     if (aircraftMarkerRef.current) aircraftMarkerRef.current.remove();
-    const isBlocked = route.is_safe === false || route.safety_status === 'unsafe' || route.safety_status === 'weather_risk';
+    const isBlocked = route.is_safe === false || route.safety_status === 'blocked' || route.safety_status === 'unsafe' || route.safety_status === 'weather_risk';
     aircraftMarkerRef.current = new mapboxgl.Marker({ element: createAircraftElement(isBlocked) })
       .setLngLat(route.coordinates[0])
       .addTo(map.current);
@@ -576,6 +693,8 @@ const ExpertAnalysisPage = () => {
     setCompareResult(null);
     setAirspaceSummary(null);
     setHeatmap(emptyCollection);
+    setBuildingLayer(emptyCollection);
+    setRoadLayer(emptyCollection);
   }, [setHeatmap]);
 
   const pollIngest = async (jobId) => {
@@ -691,6 +810,7 @@ const ExpertAnalysisPage = () => {
       });
       setIngestJob(created.data);
       const finalJob = await pollIngest(created.data.job_id);
+      await loadIngestLayers(created.data.job_id);
       if (finalJob.status === 'failed') setError('Geodata ingest failed. Select a smaller Istanbul area and try again.');
       if (finalJob.status === 'partial_success') {
         setError('warning: height data is missing for some buildings in the selected area.');
@@ -856,7 +976,7 @@ const ExpertAnalysisPage = () => {
               <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>Istanbul Airspace Overlay</Typography>
               <Stack direction="row" spacing={1}>
                 <Chip label={`NFZ ${airspaceSummary.nfz ?? 0}`} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5', fontWeight: 800 }} />
-                <Chip label={`Controlled ${airspaceSummary.controlled_airspace ?? 0}`} size="small" sx={{ bgcolor: 'rgba(182,95,112,0.18)', color: '#e17b8f', fontWeight: 800 }} />
+                <Chip label={`Controlled ${airspaceSummary.controlled_airspace ?? 0}`} size="small" sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#60a5fa', fontWeight: 800 }} />
               </Stack>
             </Box>
           )}
@@ -964,6 +1084,20 @@ const ExpertAnalysisPage = () => {
               ]}
             />
           )}
+          {routeResult && (
+            <CompactWarning
+              title="Obstacle Data"
+              items={[
+                routeResult.obstacle_data_status === 'available'
+                  ? `Obstacle data ready (${routeResult.obstacle_feature_count} building features loaded).`
+                  : 'Obstacle data missing for this corridor. Run geodata ingest to improve route confidence.',
+              ]}
+              tone={routeResult.obstacle_data_status === 'available' ? 'success' : 'danger'}
+            />
+          )}
+          {routeResult?.blocking_reason && (
+            <CompactWarning title="Blocking Status" items={[routeResult.blocking_reason]} tone="danger" />
+          )}
           {routeResult?.warnings?.length > 0 && <CompactWarning title="Warnings" items={routeResult.warnings} />}
           {routeResult?.conflicts?.length > 0 && <CompactWarning title="Conflicts" items={routeResult.conflicts.map((conflict) => `${conflict.type.toUpperCase()}: ${conflict.zone_name || conflict.message}`)} tone="danger" />}
         </Stack>
@@ -1018,16 +1152,102 @@ const ExpertAnalysisPage = () => {
         </Stack>
       </Paper>
 
+      <IconButton
+        onClick={() => setMapControlsOpen((prev) => !prev)}
+        sx={{
+          position: 'absolute',
+          right: 16,
+          bottom: 16,
+          zIndex: 22,
+          width: 52,
+          height: 52,
+          bgcolor: 'rgba(2, 6, 23, 0.94)',
+          color: '#e2e8f0',
+          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
+          '&:hover': { bgcolor: 'rgba(15, 23, 42, 0.98)' },
+        }}
+      >
+        <TuneIcon />
+      </IconButton>
+
+      {mapControlsOpen && (
+        <Paper sx={{ ...panelSx, position: 'absolute', right: 78, bottom: 16, zIndex: 21, width: 250, p: 1.5 }}>
+          <Stack spacing={1.1}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.74rem', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Map Controls
+              </Typography>
+              <IconButton size="small" onClick={() => setMapControlsOpen(false)} sx={{ color: '#94a3b8' }}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            <Stack direction="row" spacing={1}>
+              <Button
+                fullWidth
+                size="small"
+                variant={baseTone === 'dark' ? 'contained' : 'outlined'}
+                startIcon={<DarkModeIcon fontSize="small" />}
+                onClick={() => setBaseTone('dark')}
+                sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800 }}
+              >
+                Dark
+              </Button>
+              <Button
+                fullWidth
+                size="small"
+                variant={baseTone === 'light' ? 'contained' : 'outlined'}
+                startIcon={<LightModeIcon fontSize="small" />}
+                onClick={() => setBaseTone('light')}
+                sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800 }}
+              >
+                Light
+              </Button>
+            </Stack>
+            <Button
+              fullWidth
+              size="small"
+              variant={showBuildings ? 'contained' : 'outlined'}
+              startIcon={<ApartmentIcon fontSize="small" />}
+              onClick={() => setShowBuildings((prev) => !prev)}
+              sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800, justifyContent: 'space-between' }}
+            >
+              {showBuildings ? 'Hide Buildings' : 'Show Buildings'}
+            </Button>
+            <Chip
+              label={`Buildings ${buildingLayer?.features?.length ?? 0}`}
+              size="small"
+              sx={{ bgcolor: 'rgba(248,250,252,0.12)', color: '#e2e8f0', fontWeight: 800 }}
+            />
+            <Button
+              fullWidth
+              size="small"
+              variant={showRoads ? 'contained' : 'outlined'}
+              startIcon={<DirectionsTransitIcon fontSize="small" />}
+              onClick={() => setShowRoads((prev) => !prev)}
+              sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800, justifyContent: 'space-between' }}
+            >
+              {showRoads ? 'Hide Transport' : 'Show Transport'}
+            </Button>
+            <Chip
+              label={`Roads ${roadLayer?.features?.length ?? 0}`}
+              size="small"
+              sx={{ bgcolor: 'rgba(56,189,248,0.14)', color: '#7dd3fc', fontWeight: 800 }}
+            />
+          </Stack>
+        </Paper>
+      )}
+
       <Paper sx={{ ...panelSx, position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 20, px: 2, py: 0.8, display: 'flex', gap: 2 }}>
         <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem', fontFamily: 'monospace' }}>LNG {coords.lng.toFixed(4)}</Typography>
         <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem', fontFamily: 'monospace' }}>LAT {coords.lat.toFixed(4)}</Typography>
       </Paper>
 
-      <Paper sx={{ ...panelSx, position: 'absolute', bottom: 16, right: 16, zIndex: 20, p: 1.2, minWidth: 170 }}>
+      <Paper sx={{ ...panelSx, position: 'absolute', bottom: 78, right: 16, zIndex: 20, p: 1.2, minWidth: 170 }}>
         <Typography sx={{ color: '#cbd5e1', fontSize: '0.7rem', fontWeight: 800, mb: 0.8 }}>Map Layers</Typography>
         {[
           ['NFZ', '#ef4444'],
-          ['Controlled', '#b65f70'],
+          ['Controlled', '#3b82f6'],
           ['Suitability', '#22c55e'],
         ].map(([label, color]) => (
           <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
@@ -1099,8 +1319,8 @@ const StatusPanel = ({ title, status, rows, warnings = [] }) => (
 );
 
 const CompactWarning = ({ title, items, tone = 'warning' }) => (
-  <Box sx={{ bgcolor: tone === 'danger' ? 'rgba(127,29,29,0.28)' : 'rgba(120,53,15,0.28)', border: `1px solid ${tone === 'danger' ? 'rgba(248,113,113,0.25)' : 'rgba(251,191,36,0.25)'}`, borderRadius: '8px', p: 1 }}>
-    <Typography sx={{ color: tone === 'danger' ? '#fca5a5' : '#facc15', fontSize: '0.7rem', fontWeight: 900, mb: 0.6 }}>{title}</Typography>
+  <Box sx={{ bgcolor: tone === 'danger' ? 'rgba(127,29,29,0.28)' : tone === 'success' ? 'rgba(20,83,45,0.28)' : 'rgba(120,53,15,0.28)', border: `1px solid ${tone === 'danger' ? 'rgba(248,113,113,0.25)' : tone === 'success' ? 'rgba(74,222,128,0.25)' : 'rgba(251,191,36,0.25)'}`, borderRadius: '8px', p: 1 }}>
+    <Typography sx={{ color: tone === 'danger' ? '#fca5a5' : tone === 'success' ? '#86efac' : '#facc15', fontSize: '0.7rem', fontWeight: 900, mb: 0.6 }}>{title}</Typography>
     {items.slice(0, 3).map((item, index) => (
       <Typography key={`${title}-${index}`} sx={{ color: '#e2e8f0', fontSize: '0.68rem', lineHeight: 1.35, overflowWrap: 'anywhere', mb: 0.35 }}>
         {item}

@@ -1,7 +1,22 @@
 import React, { useRef, useEffect, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { Box, Paper, Typography, Divider } from '@mui/material';
+import {
+  Box,
+  Button,
+  Chip,
+  Divider,
+  IconButton,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import PolicyIcon from '@mui/icons-material/Policy';
+import RadarIcon from '@mui/icons-material/Radar';
+import TuneIcon from '@mui/icons-material/Tune';
 import axios from 'axios';
 import { getMapStyle, hasMapboxToken } from '../../utils/mapStyle';
 
@@ -57,14 +72,51 @@ const routePointAt = (coordinates, progress) => {
 };
 
 const routeStopProgress = (route) => {
+  if (route?.stop_progress !== null && route?.stop_progress !== undefined) {
+    return Math.max(0.04, Math.min(0.98, Number(route.stop_progress)));
+  }
   const blocker = route?.conflicts?.find((conflict) => conflict.severity === 'blocker' && conflict.route_progress !== null && conflict.route_progress !== undefined);
   if (!blocker) return route?.is_safe === false ? 0.58 : 1;
   return Math.max(0.04, Math.min(0.98, Number(blocker.route_progress)));
 };
 
 const routeStopPoint = (route) => {
+  if (Array.isArray(route?.stop_point)) return route.stop_point;
   const blocker = route?.conflicts?.find((conflict) => conflict.severity === 'blocker' && Array.isArray(conflict.block_point));
   return blocker?.block_point || null;
+};
+
+const routeVisualStyle = (route) => {
+  if (!route) {
+    return { color: '#f97316', dash: [1.4, 0.8] };
+  }
+  if (route.safety_status === 'safe') {
+    return { color: '#22c55e', dash: [1, 0.01] };
+  }
+  if (route.safety_status === 'warning') {
+    return { color: '#f59e0b', dash: [1.2, 0.7] };
+  }
+  if (route.safety_status === 'blocked' || route.is_safe === false) {
+    return { color: '#ef4444', dash: [0.9, 0.65] };
+  }
+  return { color: '#f97316', dash: [1.4, 0.8] };
+};
+
+const applyRasterBasemapMode = (instance, mode) => {
+  if (!instance?.getLayer('osm')) return;
+  if (mode === 'light') {
+    instance.setPaintProperty('osm', 'raster-opacity', 1);
+    instance.setPaintProperty('osm', 'raster-brightness-min', 0);
+    instance.setPaintProperty('osm', 'raster-brightness-max', 1);
+    instance.setPaintProperty('osm', 'raster-saturation', 0);
+    instance.setPaintProperty('osm', 'raster-contrast', 0);
+    return;
+  }
+  instance.setPaintProperty('osm', 'raster-opacity', 1);
+  instance.setPaintProperty('osm', 'raster-brightness-min', 0.02);
+  instance.setPaintProperty('osm', 'raster-brightness-max', 0.42);
+  instance.setPaintProperty('osm', 'raster-saturation', -0.35);
+  instance.setPaintProperty('osm', 'raster-contrast', 0.18);
 };
 
 /**
@@ -93,6 +145,10 @@ const PassengerMapView = ({
   const [zoom, setZoom] = useState(ISTANBUL_ZOOM.toFixed(1));
   const [mapLoaded, setMapLoaded] = useState(false);
   const [airspaceSummary, setAirspaceSummary] = useState(null);
+  const [baseTone, setBaseTone] = useState('dark');
+  const [mapControlsOpen, setMapControlsOpen] = useState(false);
+  const [showNfz, setShowNfz] = useState(true);
+  const [showControlled, setShowControlled] = useState(true);
 
   // ── Initialize map ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -118,6 +174,7 @@ const PassengerMapView = ({
     map.current.on('load', () => {
       setMapLoaded(true);
       map.current.resize();
+      applyRasterBasemapMode(map.current, 'dark');
       map.current.addSource('passenger-airspace-overlay', {
         type: 'geojson',
         data: emptyCollection,
@@ -141,14 +198,14 @@ const PassengerMapView = ({
         type: 'fill',
         source: 'passenger-airspace-overlay',
         filter: ['==', ['get', 'zone_category'], 'controlled_airspace'],
-        paint: { 'fill-color': '#b65f70', 'fill-opacity': 0.18 },
+        paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.16 },
       });
       map.current.addLayer({
         id: 'passenger-airspace-controlled-line',
         type: 'line',
         source: 'passenger-airspace-overlay',
         filter: ['==', ['get', 'zone_category'], 'controlled_airspace'],
-        paint: { 'line-color': '#e17b8f', 'line-width': 2 },
+        paint: { 'line-color': '#60a5fa', 'line-width': 2 },
       });
       // Add route source/layer stubs (empty initially)
       map.current.addSource('route-source', {
@@ -180,6 +237,21 @@ const PassengerMapView = ({
           'circle-radius': 8,
           'circle-color': ['get', 'color'],
           'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+      map.current.addSource('route-blocker', {
+        type: 'geojson',
+        data: emptyCollection,
+      });
+      map.current.addLayer({
+        id: 'route-blocker-circle',
+        type: 'circle',
+        source: 'route-blocker',
+        paint: {
+          'circle-radius': 9,
+          'circle-color': '#ef4444',
+          'circle-stroke-width': 3,
           'circle-stroke-color': '#ffffff',
         },
       });
@@ -218,6 +290,29 @@ const PassengerMapView = ({
         setAirspaceSummary(null);
       });
   }, [mapLoaded]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    applyRasterBasemapMode(map.current, baseTone);
+  }, [baseTone, mapLoaded]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    ['passenger-airspace-nfz-fill', 'passenger-airspace-nfz-line'].forEach((layerId) => {
+      if (map.current.getLayer(layerId)) {
+        map.current.setLayoutProperty(layerId, 'visibility', showNfz ? 'visible' : 'none');
+      }
+    });
+  }, [showNfz, mapLoaded]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    ['passenger-airspace-controlled-fill', 'passenger-airspace-controlled-line'].forEach((layerId) => {
+      if (map.current.getLayer(layerId)) {
+        map.current.setLayoutProperty(layerId, 'visibility', showControlled ? 'visible' : 'none');
+      }
+    });
+  }, [showControlled, mapLoaded]);
 
   useEffect(() => {
     if (!mapLoaded || !map.current) return;
@@ -275,9 +370,14 @@ const PassengerMapView = ({
     if (!mapLoaded || !map.current) return;
     const routeSrc = map.current.getSource('route-source');
     const epSrc = map.current.getSource('route-endpoints');
-    if (!routeSrc || !epSrc) return;
+    const blockerSrc = map.current.getSource('route-blocker');
+    if (!routeSrc || !epSrc || !blockerSrc) return;
 
     if (route) {
+      const style = routeVisualStyle(route);
+      map.current.setPaintProperty('route-line', 'line-color', style.color);
+      map.current.setPaintProperty('route-line', 'line-dasharray', style.dash);
+
       // Draw flight path
       routeSrc.setData({
         type: 'Feature',
@@ -300,6 +400,16 @@ const PassengerMapView = ({
           },
         ],
       });
+      const stopPoint = routeStopPoint(route);
+      blockerSrc.setData(
+        stopPoint
+          ? {
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: stopPoint },
+              properties: {},
+            }
+          : emptyCollection
+      );
 
       // Fit map to route bounds
       const bounds = new mapboxgl.LngLatBounds();
@@ -308,20 +418,20 @@ const PassengerMapView = ({
 
       if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
       if (aircraftMarkerRef.current) aircraftMarkerRef.current.remove();
-      const isBlocked = route.is_safe === false || route.safety_status === 'unsafe' || route.safety_status === 'weather_risk';
+      const isBlocked = route.is_safe === false || route.safety_status === 'blocked' || route.safety_status === 'unsafe' || route.safety_status === 'weather_risk';
       const aircraft = createAircraftElement(isBlocked);
       aircraftMarkerRef.current = new mapboxgl.Marker({ element: aircraft })
         .setLngLat(route.coordinates[0])
         .addTo(map.current);
       const endProgress = isBlocked ? routeStopProgress(route) : 1;
-      const stopPoint = isBlocked ? routeStopPoint(route) : null;
+      const finalStopPoint = isBlocked ? stopPoint : null;
       const durationMs = isBlocked ? 2400 : 4200;
       const startTime = performance.now();
       const animate = (now) => {
         const elapsed = now - startTime;
         const raw = Math.min(1, elapsed / durationMs);
         const eased = 1 - ((1 - raw) ** 3);
-        const point = raw >= 1 && stopPoint ? stopPoint : routePointAt(route.coordinates, eased * endProgress);
+        const point = raw >= 1 && finalStopPoint ? finalStopPoint : routePointAt(route.coordinates, eased * endProgress);
         if (point && aircraftMarkerRef.current) aircraftMarkerRef.current.setLngLat(point);
         if (raw < 1) {
           aircraftFrameRef.current = requestAnimationFrame(animate);
@@ -330,8 +440,12 @@ const PassengerMapView = ({
       aircraftFrameRef.current = requestAnimationFrame(animate);
     } else {
       // Clear route
+      const style = routeVisualStyle(null);
+      map.current.setPaintProperty('route-line', 'line-color', style.color);
+      map.current.setPaintProperty('route-line', 'line-dasharray', style.dash);
       routeSrc.setData({ type: 'FeatureCollection', features: [] });
       epSrc.setData({ type: 'FeatureCollection', features: [] });
+      blockerSrc.setData({ type: 'FeatureCollection', features: [] });
       if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
       if (aircraftMarkerRef.current) {
         aircraftMarkerRef.current.remove();
@@ -380,9 +494,112 @@ const PassengerMapView = ({
         ))}
       </Paper>
 
+      <IconButton
+        onClick={() => setMapControlsOpen((prev) => !prev)}
+        sx={{
+          position: 'absolute',
+          right: 16,
+          bottom: 16,
+          zIndex: 12,
+          width: 52,
+          height: 52,
+          bgcolor: 'rgba(2, 6, 23, 0.94)',
+          color: '#e2e8f0',
+          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
+          '&:hover': { bgcolor: 'rgba(15, 23, 42, 0.98)' },
+        }}
+      >
+        <TuneIcon />
+      </IconButton>
+
+      {mapControlsOpen && (
+        <Paper
+          sx={{
+            position: 'absolute',
+            right: 78,
+            bottom: 16,
+            zIndex: 11,
+            width: 250,
+            p: 1.5,
+            background: 'rgba(2, 6, 23, 0.92)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '14px',
+            boxShadow: '0 18px 48px rgba(0,0,0,0.34)',
+          }}
+        >
+          <Stack spacing={1.1}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.74rem', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Map Controls
+              </Typography>
+              <IconButton size="small" onClick={() => setMapControlsOpen(false)} sx={{ color: '#94a3b8' }}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
+
+            <Stack direction="row" spacing={1}>
+              <Button
+                fullWidth
+                size="small"
+                variant={baseTone === 'dark' ? 'contained' : 'outlined'}
+                startIcon={<DarkModeIcon fontSize="small" />}
+                onClick={() => setBaseTone('dark')}
+                sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800 }}
+              >
+                Dark
+              </Button>
+              <Button
+                fullWidth
+                size="small"
+                variant={baseTone === 'light' ? 'contained' : 'outlined'}
+                startIcon={<LightModeIcon fontSize="small" />}
+                onClick={() => setBaseTone('light')}
+                sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800 }}
+              >
+                Light
+              </Button>
+            </Stack>
+
+            <Button
+              fullWidth
+              size="small"
+              variant={showNfz ? 'contained' : 'outlined'}
+              startIcon={<PolicyIcon fontSize="small" />}
+              onClick={() => setShowNfz((prev) => !prev)}
+              sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800, justifyContent: 'space-between' }}
+            >
+              {showNfz ? 'Hide NFZ' : 'Show NFZ'}
+            </Button>
+            <Chip
+              label={`NFZ ${airspaceSummary?.nfz ?? 0}`}
+              size="small"
+              sx={{ bgcolor: 'rgba(239,68,68,0.14)', color: '#fca5a5', fontWeight: 800 }}
+            />
+
+            <Button
+              fullWidth
+              size="small"
+              variant={showControlled ? 'contained' : 'outlined'}
+              startIcon={<RadarIcon fontSize="small" />}
+              onClick={() => setShowControlled((prev) => !prev)}
+              sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800, justifyContent: 'space-between' }}
+            >
+              {showControlled ? 'Hide Controlled' : 'Show Controlled'}
+            </Button>
+            <Chip
+              label={`Controlled ${airspaceSummary?.controlled_airspace ?? 0}`}
+              size="small"
+              sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#93c5fd', fontWeight: 800 }}
+            />
+          </Stack>
+        </Paper>
+      )}
+
       {/* Legend — bottom right */}
       <Paper sx={{
-        position: 'absolute', bottom: 16, right: 16, zIndex: 10,
+        position: 'absolute', bottom: 78, right: 16, zIndex: 10,
         px: 1.5, py: 1,
         background: 'rgba(2, 6, 23, 0.88)',
         backdropFilter: 'blur(12px)',
@@ -394,7 +611,7 @@ const PassengerMapView = ({
         </Typography>
         {[
           { label: `NFZ ${airspaceSummary?.nfz ?? 0}`, color: '#ef4444' },
-          { label: `Controlled ${airspaceSummary?.controlled_airspace ?? 0}`, color: '#b65f70' },
+          { label: `Controlled ${airspaceSummary?.controlled_airspace ?? 0}`, color: '#3b82f6' },
           { label: 'High  ≥85', color: '#22c55e' },
           { label: 'Mid   ≥70', color: '#eab308' },
           { label: 'Low   <70', color: '#ef4444' },

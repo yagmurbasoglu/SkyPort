@@ -84,6 +84,22 @@ MOCK_VERTIPORTS = [
         'price_per_km': 3.8,
         'description': 'Premium vertiport above Üsküdar ferry terminal with panoramic views.',
     },
+    {
+        'name': 'Maslak Tech Campus Vertiport',
+        'lat': 41.1118,
+        'lng': 29.021,
+        'suitability_score': 84,
+        'price_per_km': 3.3,
+        'description': 'Northern business-district vertiport placed for short test corridors away from major NFZ clusters.',
+    },
+    {
+        'name': 'Istinye Valley Vertiport',
+        'lat': 41.1094,
+        'lng': 29.0417,
+        'suitability_score': 83,
+        'price_per_km': 3.2,
+        'description': 'Short-hop Bosphorus-side vertiport intended for passenger route simulation checks.',
+    },
 ]
 
 DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/skyport"

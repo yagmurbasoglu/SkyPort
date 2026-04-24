@@ -9,6 +9,23 @@ from app.main import app
 client = TestClient(app)
 
 
+def test_check_email_returns_available_true() -> None:
+    with patch("app.api.routes.auth.UserService.get_user_by_email", return_value=None):
+        response = client.get("/api/auth/check-email", params={"email": "fresh.user@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"available": True}
+
+
+def test_check_email_returns_available_false() -> None:
+    existing_user = SimpleNamespace(id=1, email="existing.user@example.com")
+    with patch("app.api.routes.auth.UserService.get_user_by_email", return_value=existing_user):
+        response = client.get("/api/auth/check-email", params={"email": "existing.user@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"available": False}
+
+
 def test_register_returns_created_user() -> None:
     user = SimpleNamespace(
         id=1,
@@ -22,7 +39,7 @@ def test_register_returns_created_user() -> None:
             "/api/auth/register",
             json={
                 "email": "new.user@example.com",
-                "password": "strong-password",
+                "password": "StrongPass1",
                 "role": "passenger",
                 "full_name": "New User",
             },
@@ -47,8 +64,76 @@ def test_register_with_duplicate_email_returns_400() -> None:
             "/api/auth/register",
             json={
                 "email": "existing.user@example.com",
-                "password": "strong-password",
+                "password": "StrongPass1",
                 "role": "passenger",
+                "full_name": "Existing User",
+            },
+        )
+
+    assert response.status_code == 400
+
+
+def test_register_with_weak_password_returns_422() -> None:
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "weak.password@example.com",
+            "password": "weakpass",
+            "role": "passenger",
+            "full_name": "Weak Password",
+        },
+    )
+
+    assert response.status_code == 422
+    errors = response.json()["detail"]
+    assert any("Password must include at least one uppercase letter." in err["msg"] for err in errors)
+
+
+def test_register_without_full_name_returns_422() -> None:
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "missing.name@example.com",
+            "password": "StrongPass1",
+            "role": "passenger",
+            "full_name": " ",
+        },
+    )
+
+    assert response.status_code == 422
+    errors = response.json()["detail"]
+    assert any("Full name must be at least 2 characters long." in err["msg"] for err in errors)
+
+
+def test_register_with_invalid_email_returns_422() -> None:
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "a",
+            "password": "StrongPass1",
+            "role": "passenger",
+            "full_name": "Invalid Email",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_register_with_duplicate_email_different_case_returns_400() -> None:
+    with patch(
+        "app.api.routes.auth.UserService.create_user",
+        side_effect=HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The user with this email already exists in the system.",
+        ),
+    ):
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "Existing.User@Example.com",
+                "password": "StrongPass1",
+                "role": "passenger",
+                "full_name": "Existing User",
             },
         )
 

@@ -22,6 +22,13 @@ from app.repos.nfz_repo import (
 )
 from app.schemas.geodata import BoundingBox, IngestRequest
 
+ISTANBUL_BOUNDING_BOX = BoundingBox(
+    west=28.45,
+    east=29.55,
+    south=40.75,
+    north=41.48,
+)
+
 try:
     import h3
 except ModuleNotFoundError:  # pragma: no cover - environment-dependent
@@ -56,6 +63,22 @@ def _validate_bbox(req: IngestRequest) -> None:
         raise HTTPException(
             status_code=400,
             detail={"code": "INVALID_BBOX", "message": "south must be smaller than north."},
+        )
+    if (
+        bbox.west < ISTANBUL_BOUNDING_BOX.west
+        or bbox.east > ISTANBUL_BOUNDING_BOX.east
+        or bbox.south < ISTANBUL_BOUNDING_BOX.south
+        or bbox.north > ISTANBUL_BOUNDING_BOX.north
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "OUTSIDE_ISTANBUL_BOUNDARY",
+                "message": "Selected area must remain within Istanbul boundaries.",
+                "details": {
+                    "allowed_bbox": ISTANBUL_BOUNDING_BOX.model_dump(),
+                },
+            },
         )
 
     max_bbox_area_km2 = 25.0
@@ -413,6 +436,29 @@ def get_status(job_id: str) -> dict:
             detail={"code": "JOB_NOT_FOUND", "message": "Ingestion job not found."},
         )
     return job
+
+
+def get_layers(job_id: str) -> dict:
+    job = geodata_repo.get_job(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "JOB_NOT_FOUND", "message": "Ingestion job not found."},
+        )
+    buildings = ((job.get("extracted_layers") or {}).get("buildings") or {}).get("features") or []
+    roads = ((job.get("extracted_layers") or {}).get("roads") or {}).get("features") or []
+    return {
+        "job_id": job["job_id"],
+        "layer_counts": job.get("layer_counts") or {},
+        "buildings": {
+            "type": "FeatureCollection",
+            "features": buildings,
+        },
+        "roads": {
+            "type": "FeatureCollection",
+            "features": roads,
+        },
+    }
 
 
 def get_airspace_overlay(bbox: BoundingBox) -> dict:

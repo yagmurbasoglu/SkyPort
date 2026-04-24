@@ -77,16 +77,31 @@ def test_invalid_bbox_returns_400() -> None:
 def test_too_large_bbox_returns_400() -> None:
     payload = _valid_payload()
     payload["bounding_box"] = {
-        "west": 28.0,
-        "east": 29.8,
-        "south": 40.6,
-        "north": 41.6,
+        "west": 28.45,
+        "east": 29.05,
+        "south": 40.9,
+        "north": 41.3,
     }
 
     response = client.post("/api/geodata/ingest", json=payload)
     assert response.status_code == 400
     body = response.json()
     assert body["code"] == "BBOX_TOO_LARGE"
+
+
+def test_bbox_outside_istanbul_returns_400() -> None:
+    payload = _valid_payload()
+    payload["bounding_box"] = {
+        "west": 28.2,
+        "east": 28.5,
+        "south": 40.9,
+        "north": 41.1,
+    }
+
+    response = client.post("/api/geodata/ingest", json=payload)
+    assert response.status_code == 400
+    body = response.json()
+    assert body["code"] == "OUTSIDE_ISTANBUL_BOUNDARY"
 
 
 def test_missing_layers_returns_partial_success(monkeypatch) -> None:
@@ -166,6 +181,52 @@ def test_get_ingest_status_returns_saved_job(monkeypatch) -> None:
     body = response.json()
     assert body["job_id"] == job_id
     assert body["status"] in {"success", "partial_success", "failed", "running"}
+
+
+def test_get_ingest_layers_returns_building_feature_collection(monkeypatch) -> None:
+    monkeypatch.setattr(
+        geodata_service,
+        "extract_osm_data",
+        lambda _bbox: (
+            {"buildings": [1], "roads": [1], "land_use": [1], "nfz": [], "controlled_airspace": []},
+            [],
+        ),
+    )
+    monkeypatch.setattr(geodata_service, "clean_and_transform", lambda features: features)
+    monkeypatch.setattr(geodata_service, "generate_h3_grid", lambda _bbox, _res: ["c1"])
+    monkeypatch.setattr(
+        geodata_service,
+        "_serialize_geo_features",
+        lambda _features: {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[28.95, 41.0], [28.96, 41.0], [28.96, 41.01], [28.95, 41.01], [28.95, 41.0]]],
+                    },
+                    "properties": {"name": "Building A"},
+                }
+            ],
+        },
+    )
+
+    def run_inline(job_id: str, req_data: dict) -> None:
+        geodata_service._run_ingest_job(job_id, req_data)
+
+    monkeypatch.setattr(geodata_service, "_start_worker", run_inline)
+
+    created = client.post("/api/geodata/ingest", json=_valid_payload())
+    job_id = created.json()["job_id"]
+
+    response = client.get(f"/api/geodata/ingest/{job_id}/layers")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["job_id"] == job_id
+    assert body["buildings"]["type"] == "FeatureCollection"
+    assert len(body["buildings"]["features"]) == 1
+    assert body["roads"]["type"] == "FeatureCollection"
 
 
 def test_extract_osm_data_warns_when_notam_overlay_missing(monkeypatch) -> None:

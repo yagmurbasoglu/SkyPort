@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,20 @@ from app.services.auth_service import AuthService
 from app.services.user_service import UserService
 
 router = APIRouter()
+
+
+@router.get("/check-email")
+def check_email_availability(
+    *,
+    email: str = Query(..., min_length=3),
+    db: Session = Depends(deps.get_db),
+):
+    """
+    Check whether an email address is available for registration.
+    """
+    user_svc = UserService(db)
+    existing_user = user_svc.get_user_by_email(email)
+    return {"available": existing_user is None}
 
 
 @router.post("/register", response_model=UserRead)

@@ -47,6 +47,62 @@ const scrollSx = {
   },
 };
 
+const routeStatusConfig = (route) => {
+  const status = route?.safety_status || 'simulated';
+  if (status === 'safe') {
+    return {
+      color: '#86efac',
+      background: 'rgba(34,197,94,0.16)',
+      label: 'safe',
+      summary: 'Safe route ready for flight.',
+    };
+  }
+  if (status === 'warning') {
+    return {
+      color: '#fbbf24',
+      background: 'rgba(245,158,11,0.16)',
+      label: 'warning',
+      summary: 'Route found with warnings. Review airspace and weather before flight.',
+    };
+  }
+  if (status === 'blocked' || route?.is_safe === false) {
+    return {
+      color: '#fca5a5',
+      background: 'rgba(239,68,68,0.16)',
+      label: 'blocked',
+      summary: route?.blocking_reason || 'No safe route is currently available.',
+    };
+  }
+  return {
+    color: '#cbd5e1',
+    background: 'rgba(148,163,184,0.16)',
+    label: status,
+    summary: 'Route simulation ready.',
+  };
+};
+
+const blockingCopy = (route) => {
+  if (!route?.blocking_type) return null;
+  if (route.blocking_type === 'obstacle') return 'Blocked by obstacle';
+  if (route.blocking_type === 'nfz') return 'Blocked by no-fly zone';
+  if (route.blocking_type === 'weather') return 'Blocked by weather';
+  return route.blocking_reason || 'Blocked route';
+};
+
+const obstacleDataCopy = (route) => {
+  if (!route) return null;
+  if (route.obstacle_data_status === 'available') {
+    return {
+      severity: 'success',
+      text: `Obstacle data ready (${route.obstacle_feature_count} building features loaded).`,
+    };
+  }
+  return {
+    severity: 'warning',
+    text: 'Obstacle data missing for this corridor. Ask an expert to run geodata ingest.',
+  };
+};
+
 const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
@@ -97,6 +153,10 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
       setLoading(false);
     }
   };
+
+  const statusMeta = routeStatusConfig(route);
+  const shortBlockingCopy = blockingCopy(route);
+  const obstacleInfo = obstacleDataCopy(route);
 
   const handleClear = () => {
     setFrom(null);
@@ -231,17 +291,21 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
                 Route Details
               </Typography>
               <Chip
-                label={route.safety_status || 'simulated'}
+                label={statusMeta.label}
                 size="small"
                 sx={{
                   height: 20,
                   fontSize: '0.62rem',
-                  color: route.is_safe ? '#86efac' : '#fca5a5',
-                  background: route.is_safe ? 'rgba(34,197,94,0.16)' : 'rgba(239,68,68,0.16)',
+                  color: statusMeta.color,
+                  background: statusMeta.background,
                   fontWeight: 700,
                 }}
               />
             </Box>
+
+            <Typography sx={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.5, mb: 1.2 }}>
+              {statusMeta.summary}
+            </Typography>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
               <StatBox icon={<StraightenIcon sx={{ fontSize: 14, color: '#60a5fa' }} />} label="Distance" value={`${route.distance_km} km`} />
@@ -252,6 +316,12 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
             {route.warnings?.length > 0 && (
               <Alert severity="warning" sx={{ mt: 1.5, fontSize: '0.72rem' }}>
                 {route.warnings.slice(0, 2).join(' ')}
+              </Alert>
+            )}
+
+            {obstacleInfo && (
+              <Alert severity={obstacleInfo.severity} sx={{ mt: 1.5, fontSize: '0.72rem' }}>
+                {obstacleInfo.text}
               </Alert>
             )}
 
@@ -280,6 +350,12 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
               </Box>
             )}
 
+            {shortBlockingCopy && (
+              <Alert severity="error" sx={{ mt: 1.5, fontSize: '0.72rem' }}>
+                {shortBlockingCopy}
+              </Alert>
+            )}
+
             {route.conflicts?.length > 0 && (
               <Box sx={{ mt: 1.5 }}>
                 {route.conflicts.slice(0, 2).map((conflict, index) => (
@@ -288,6 +364,23 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
                   </Typography>
                 ))}
               </Box>
+            )}
+
+            {!route.is_safe && (
+              <Button
+                fullWidth
+                disabled
+                sx={{
+                  mt: 1.5,
+                  textTransform: 'none',
+                  fontSize: '0.75rem',
+                  color: '#fca5a5',
+                  border: '1px solid rgba(248,113,113,0.32)',
+                  background: 'rgba(127,29,29,0.18)',
+                }}
+              >
+                Continue disabled for blocked route
+              </Button>
             )}
 
             <Button

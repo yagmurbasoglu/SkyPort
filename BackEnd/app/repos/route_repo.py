@@ -4,6 +4,7 @@ from typing import Any
 
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import LineString, mapping, shape
+from shapely.geometry.base import BaseGeometry
 from sqlalchemy import text
 
 from app.db.session import SessionLocal
@@ -40,6 +41,10 @@ def _line_geojson(coordinates: list[list[float]]) -> str:
     return json.dumps(mapping(line))
 
 
+def _line_from_coordinates(coordinates: list[list[float]]) -> LineString:
+    return LineString([(lng, lat) for lng, lat in coordinates])
+
+
 def get_vertiport_point(vertiport_id: int) -> dict[str, Any] | None:
     query = text(
         """
@@ -63,19 +68,20 @@ def create_route(
     user_id: int,
     from_vertiport_id: int | None,
     to_vertiport_id: int | None,
+    status: str = "simulated",
     coordinates: list[list[float]],
     distance_km: float,
     duration_min: int,
     price_tl: float,
     weather_snapshot: dict[str, Any],
 ) -> dict[str, Any]:
-    line = LineString([(lng, lat) for lng, lat in coordinates])
+    line = _line_from_coordinates(coordinates)
     with SessionLocal() as db:
         route = Route(
             user_id=user_id,
             from_vertiport_id=from_vertiport_id,
             to_vertiport_id=to_vertiport_id,
-            status="simulated",
+            status=status,
             distance_km=_decimal(distance_km),
             duration_min=duration_min,
             price_tl=_decimal(price_tl),
@@ -107,6 +113,46 @@ def count_nfz_intersections_for_coordinates(coordinates: list[list[float]]) -> i
     with SessionLocal() as db:
         row = db.execute(query, {"line_geojson": _line_geojson(coordinates)}).mappings().first()
         return int(row["hit_count"] or 0) if row else 0
+
+
+def list_nfz_intersections_for_coordinates(coordinates: list[list[float]]) -> list[dict[str, Any]]:
+    query = text(
+        """
+        WITH candidate AS (
+            SELECT ST_SetSRID(ST_GeomFromGeoJSON(:line_geojson), 4326) AS geom
+        )
+        SELECT
+            n.id,
+            n.zone_name,
+            n.zone_code,
+            n.zone_type,
+            n.source,
+            ST_LineLocatePoint(
+                c.geom,
+                ST_ClosestPoint(
+                    ST_Intersection(n.geom, c.geom),
+                    ST_StartPoint(c.geom)
+                )
+            ) AS route_progress,
+            ST_AsGeoJSON(
+                ST_ClosestPoint(
+                    ST_Intersection(n.geom, c.geom),
+                    ST_StartPoint(c.geom)
+                )
+            )::json AS block_point
+        FROM public.nfz_zones n
+        CROSS JOIN candidate c
+        WHERE n.is_active = true
+          AND n.source NOT ILIKE 'CONTROLLED_AIRSPACE%%'
+          AND (n.effective_from IS NULL OR n.effective_from <= now())
+          AND (n.effective_to IS NULL OR n.effective_to >= now())
+          AND ST_Intersects(n.geom, c.geom)
+        ORDER BY route_progress ASC NULLS LAST
+        LIMIT 20
+        """
+    )
+    with SessionLocal() as db:
+        return [dict(row) for row in db.execute(query, {"line_geojson": _line_geojson(coordinates)}).mappings()]
 
 
 def get_route(route_id: int, *, user_id: int | None = None) -> dict[str, Any] | None:
@@ -200,13 +246,48 @@ def list_controlled_airspace_intersections(route_id: int) -> list[dict[str, Any]
         ]
 
 
+def list_controlled_airspace_intersections_for_coordinates(coordinates: list[list[float]]) -> list[dict[str, Any]]:
+    query = text(
+        """
+        WITH candidate AS (
+            SELECT ST_SetSRID(ST_GeomFromGeoJSON(:line_geojson), 4326) AS geom
+        )
+        SELECT
+            c.id,
+            c.zone_name,
+            c.zone_code,
+            c.airspace_class,
+            c.source
+        FROM public.controlled_airspace_zones c
+        CROSS JOIN candidate candidate_route
+        WHERE c.is_active = true
+          AND (c.effective_from IS NULL OR c.effective_from <= now())
+          AND (c.effective_to IS NULL OR c.effective_to >= now())
+          AND ST_Intersects(
+              ST_Buffer(ST_Centroid(c.geom)::geography, :render_radius_m)::geometry,
+              candidate_route.geom
+          )
+        LIMIT 20
+        """
+    )
+    with SessionLocal() as db:
+        return [
+            dict(row)
+            for row in db.execute(
+                query,
+                {"line_geojson": _line_geojson(coordinates), "render_radius_m": _CONTROLLED_RENDER_RADIUS_M},
+            ).mappings()
+        ]
+
+
 def list_building_obstacle_intersections(route_id: int, *, max_hits: int = 10) -> list[dict[str, Any]]:
     route = get_route(route_id)
     if route is None or not route.get("coordinates"):
         return []
+    return list_building_obstacle_intersections_for_coordinates(route["coordinates"], max_hits=max_hits)
 
-    route_line = LineString([(lng, lat) for lng, lat in route["coordinates"]])
-    route_bounds = route_line.bounds
+
+def load_recent_building_obstacles(limit: int = 8) -> list[dict[str, Any]]:
     jobs_query = text(
         """
         SELECT job_id, region_name, extracted_layers, updated_at
@@ -214,14 +295,13 @@ def list_building_obstacle_intersections(route_id: int, *, max_hits: int = 10) -
         WHERE status IN ('success', 'partial_success')
           AND COALESCE((layer_counts ->> 'buildings')::int, 0) > 0
         ORDER BY updated_at DESC
-        LIMIT 8
+        LIMIT :limit
         """
     )
-
-    hits: list[dict[str, Any]] = []
+    obstacles: list[dict[str, Any]] = []
     seen: set[str] = set()
     with SessionLocal() as db:
-        jobs = [dict(row) for row in db.execute(jobs_query).mappings()]
+        jobs = [dict(row) for row in db.execute(jobs_query, {"limit": limit}).mappings()]
 
     for job in jobs:
         features = ((job.get("extracted_layers") or {}).get("buildings") or {}).get("features") or []
@@ -229,35 +309,76 @@ def list_building_obstacle_intersections(route_id: int, *, max_hits: int = 10) -
             geometry = feature.get("geometry")
             if not geometry:
                 continue
+            key = json.dumps(geometry, sort_keys=True)
+            if key in seen:
+                continue
             try:
                 obstacle_geom = shape(geometry)
             except Exception:
                 continue
             if obstacle_geom.is_empty or not obstacle_geom.is_valid:
                 continue
-            if not _bounds_overlap(route_bounds, obstacle_geom.bounds):
-                continue
-            if not route_line.intersects(obstacle_geom):
-                continue
-            key = json.dumps(geometry, sort_keys=True)
-            if key in seen:
-                continue
             seen.add(key)
-            intersection = route_line.intersection(obstacle_geom)
-            point = route_line.interpolate(route_line.project(intersection.centroid))
-            progress = route_line.project(point) / route_line.length if route_line.length else 0
             props = feature.get("properties") or {}
-            hits.append(
+            obstacles.append(
                 {
-                    "id": None,
+                    "geometry": obstacle_geom,
                     "zone_name": props.get("name") or props.get("building") or f"Building obstacle {index + 1}",
                     "job_id": job.get("job_id"),
-                    "route_progress": progress,
-                    "block_point": {"type": "Point", "coordinates": [point.x, point.y]},
                 }
             )
-            if len(hits) >= max_hits:
-                return sorted(hits, key=lambda item: item.get("route_progress") or 0)
+    return obstacles
+
+
+def list_building_obstacle_intersections_for_coordinates(
+    coordinates: list[list[float]],
+    *,
+    max_hits: int = 10,
+    obstacle_features: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    if not coordinates:
+        return []
+    features = obstacle_features if obstacle_features is not None else load_recent_building_obstacles()
+    route_line = _line_from_coordinates(coordinates)
+    return _building_hits_for_line(
+        route_line,
+        max_hits=max_hits,
+        obstacle_features=features,
+    )
+
+
+def _building_hits_for_line(
+    route_line: LineString,
+    *,
+    max_hits: int,
+    obstacle_features: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    route_bounds = route_line.bounds
+    hits: list[dict[str, Any]] = []
+
+    for obstacle in obstacle_features:
+        obstacle_geom = obstacle.get("geometry")
+        if not isinstance(obstacle_geom, BaseGeometry):
+            continue
+        if not _bounds_overlap(route_bounds, obstacle_geom.bounds):
+            continue
+        if not route_line.intersects(obstacle_geom):
+            continue
+        intersection = route_line.intersection(obstacle_geom)
+        point = route_line.interpolate(route_line.project(intersection.centroid))
+        progress = route_line.project(point) / route_line.length if route_line.length else 0
+        hits.append(
+            {
+                "id": None,
+                "zone_name": obstacle.get("zone_name"),
+                "job_id": obstacle.get("job_id"),
+                "route_progress": progress,
+                "block_point": {"type": "Point", "coordinates": [point.x, point.y]},
+            }
+        )
+        if len(hits) >= max_hits:
+            break
+
     return sorted(hits, key=lambda item: item.get("route_progress") or 0)
 
 

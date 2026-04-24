@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async ({ email, password }) => {
     const formData = new URLSearchParams();
-    formData.append('username', email);
+    formData.append('username', email.trim().toLowerCase());
     formData.append('password', password);
     
     // 1. Get Token
@@ -56,13 +56,20 @@ export const AuthProvider = ({ children }) => {
     return existingUser;
   };
 
+  const checkEmailAvailability = async (email) => {
+    const result = await axios.get('/api/auth/check-email', {
+      params: { email: email.trim().toLowerCase() }
+    });
+    return result.data.available;
+  };
+
   const register = async ({ email, password, role: selectedRole, name }) => {
     // 1. Register User
     await axios.post('/api/auth/register', {
-      email,
+      email: email.trim().toLowerCase(),
       password,
       role: selectedRole || 'passenger',
-      full_name: name || email.split('@')[0]
+      full_name: name?.trim()
     });
     
     // 2. Automatically login after registration
@@ -77,7 +84,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn, role, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoggedIn, role, login, register, logout, checkEmailAvailability }}>
       {children}
     </AuthContext.Provider>
   );

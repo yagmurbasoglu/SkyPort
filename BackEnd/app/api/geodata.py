@@ -1,7 +1,14 @@
 from fastapi import APIRouter, Query
 
-from app.schemas.geodata import AirspaceOverlayResponse, BoundingBox, IngestRequest, IngestResponse, IngestStatusResponse
-from app.services.geodata_service import get_airspace_overlay, get_status, ingest
+from app.schemas.geodata import (
+    AirspaceOverlayResponse,
+    BoundingBox,
+    IngestLayersResponse,
+    IngestRequest,
+    IngestResponse,
+    IngestStatusResponse,
+)
+from app.services.geodata_service import get_airspace_overlay, get_layers, get_status, ingest
 
 router = APIRouter(prefix="/geodata", tags=["geodata"])
 
@@ -16,6 +23,12 @@ async def ingest_geodata(req: IngestRequest) -> IngestResponse:
 async def get_ingest_status(job_id: str) -> IngestStatusResponse:
     result = get_status(job_id)
     return IngestStatusResponse(**result)
+
+
+@router.get("/ingest/{job_id}/layers", response_model=IngestLayersResponse)
+async def get_ingest_layers(job_id: str) -> IngestLayersResponse:
+    result = get_layers(job_id)
+    return IngestLayersResponse(**result)
 
 
 @router.get("/airspace", response_model=AirspaceOverlayResponse)

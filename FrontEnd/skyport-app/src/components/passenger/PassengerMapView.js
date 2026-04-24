@@ -32,12 +32,12 @@ const createAircraftElement = (blocked = false) => {
   `;
   shell.innerHTML = `
     <svg width="38" height="38" viewBox="0 0 64 64" aria-hidden="true">
-      <circle cx="32" cy="32" r="20" fill="${blocked ? 'rgba(239,68,68,0.22)' : 'rgba(14,165,233,0.22)'}" stroke="${blocked ? '#fca5a5' : '#7dd3fc'}" stroke-width="2"/>
-      <path d="M31 9 L39 31 L56 38 L55 44 L37 40 L32 55 L27 55 L27 40 L9 44 L8 38 L25 31 Z" fill="${blocked ? '#ef4444' : '#38bdf8'}" stroke="#f8fafc" stroke-width="2" stroke-linejoin="round"/>
+      <circle cx="32" cy="32" r="20" fill="${blocked ? 'rgba(239,68,68,0.22)' : 'rgba(182,95,112,0.22)'}" stroke="${blocked ? '#fca5a5' : '#e17b8f'}" stroke-width="2"/>
+      <path d="M31 9 L39 31 L56 38 L55 44 L37 40 L32 55 L27 55 L27 40 L9 44 L8 38 L25 31 Z" fill="${blocked ? '#ef4444' : '#b65f70'}" stroke="#f8fafc" stroke-width="2" stroke-linejoin="round"/>
       <path d="M26 31 H38" stroke="#0f172a" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
     </svg>
   `;
-  shell.style.filter = `drop-shadow(0 0 12px ${blocked ? 'rgba(239,68,68,0.95)' : 'rgba(56,189,248,0.95)'})`;
+  shell.style.filter = `drop-shadow(0 0 12px ${blocked ? 'rgba(239,68,68,0.95)' : 'rgba(182,95,112,0.95)'})`;
   return shell;
 };
 
@@ -141,14 +141,14 @@ const PassengerMapView = ({
         type: 'fill',
         source: 'passenger-airspace-overlay',
         filter: ['==', ['get', 'zone_category'], 'controlled_airspace'],
-        paint: { 'fill-color': '#38bdf8', 'fill-opacity': 0.18 },
+        paint: { 'fill-color': '#b65f70', 'fill-opacity': 0.18 },
       });
       map.current.addLayer({
         id: 'passenger-airspace-controlled-line',
         type: 'line',
         source: 'passenger-airspace-overlay',
         filter: ['==', ['get', 'zone_category'], 'controlled_airspace'],
-        paint: { 'line-color': '#7dd3fc', 'line-width': 2 },
+        paint: { 'line-color': '#e17b8f', 'line-width': 2 },
       });
       // Add route source/layer stubs (empty initially)
       map.current.addSource('route-source', {
@@ -357,7 +357,7 @@ const PassengerMapView = ({
           position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
           zIndex: 10, px: 2, py: 0.8,
           display: 'flex', alignItems: 'center', gap: 2,
-          background: 'rgba(10, 18, 35, 0.88)',
+          background: 'rgba(2, 6, 23, 0.88)',
           backdropFilter: 'blur(12px)',
           border: '1px solid rgba(255,255,255,0.07)',
           borderRadius: '10px',
@@ -384,7 +384,7 @@ const PassengerMapView = ({
       <Paper sx={{
         position: 'absolute', bottom: 16, right: 16, zIndex: 10,
         px: 1.5, py: 1,
-        background: 'rgba(10, 18, 35, 0.88)',
+        background: 'rgba(2, 6, 23, 0.88)',
         backdropFilter: 'blur(12px)',
         border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: '10px',
@@ -394,7 +394,7 @@ const PassengerMapView = ({
         </Typography>
         {[
           { label: `NFZ ${airspaceSummary?.nfz ?? 0}`, color: '#ef4444' },
-          { label: `Controlled ${airspaceSummary?.controlled_airspace ?? 0}`, color: '#38bdf8' },
+          { label: `Controlled ${airspaceSummary?.controlled_airspace ?? 0}`, color: '#b65f70' },
           { label: 'High  ≥85', color: '#22c55e' },
           { label: 'Mid   ≥70', color: '#eab308' },
           { label: 'Low   <70', color: '#ef4444' },

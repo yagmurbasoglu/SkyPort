@@ -19,7 +19,7 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
         left: 16,
         zIndex: 10,
         width: 240,
-        background: 'rgba(10, 18, 35, 0.92)',
+        background: 'rgba(2, 6, 23, 0.92)',
         backdropFilter: 'blur(14px)',
         border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: '14px',
@@ -28,7 +28,7 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
     >
       {/* Header */}
       <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <FilterListIcon sx={{ fontSize: 16, color: '#3b82f6' }} />
+        <FilterListIcon sx={{ fontSize: 16, color: '#b65f70' }} />
         <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           Filters
         </Typography>
@@ -37,8 +37,8 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
           size="small"
           sx={{
             ml: 'auto', height: 18, fontSize: '0.6rem',
-            background: 'rgba(59,130,246,0.15)',
-            border: '1px solid rgba(59,130,246,0.25)',
+            background: 'rgba(182,95,112,0.15)',
+            border: '1px solid rgba(182,95,112,0.25)',
             color: '#60a5fa',
           }}
         />
@@ -59,13 +59,13 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
           max={40}
           step={1}
           sx={{
-            color: '#3b82f6',
-            '& .MuiSlider-track': { background: 'linear-gradient(90deg, #3b82f6, #60a5fa)' },
+            color: '#b65f70',
+            '& .MuiSlider-track': { background: 'linear-gradient(90deg, #b65f70, #60a5fa)' },
             '& .MuiSlider-thumb': {
               width: 14, height: 14,
-              border: '2px solid #3b82f6',
+              border: '2px solid #b65f70',
               background: '#fff',
-              '&:hover': { boxShadow: '0 0 0 6px rgba(59,130,246,0.2)' },
+              '&:hover': { boxShadow: '0 0 0 6px rgba(182,95,112,0.2)' },
             },
             '& .MuiSlider-rail': { background: 'rgba(255,255,255,0.1)' },
           }}
@@ -86,8 +86,8 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
                 display: 'flex', alignItems: 'center', gap: 1,
                 px: 1.5, py: 0.8, borderRadius: 1.5, cursor: 'pointer',
                 transition: 'all 0.15s',
-                background: filters[key] ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.03)',
-                border: filters[key] ? '1px solid rgba(59,130,246,0.3)' : '1px solid transparent',
+                background: filters[key] ? 'rgba(182,95,112,0.12)' : 'rgba(255,255,255,0.03)',
+                border: filters[key] ? '1px solid rgba(182,95,112,0.3)' : '1px solid transparent',
                 '&:hover': { background: 'rgba(255,255,255,0.06)' },
               }}
             >
@@ -99,7 +99,7 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
                 sx={{
                   width: 14, height: 14, borderRadius: '4px',
                   border: filters[key] ? 'none' : '1.5px solid rgba(255,255,255,0.2)',
-                  background: filters[key] ? '#3b82f6' : 'transparent',
+                  background: filters[key] ? '#b65f70' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'all 0.15s',
                 }}

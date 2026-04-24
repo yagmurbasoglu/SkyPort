@@ -19,6 +19,7 @@ import {
   Typography,
 } from '@mui/material';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
+import CloseIcon from '@mui/icons-material/Close';
 import CropFreeIcon from '@mui/icons-material/CropFree';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
@@ -57,7 +58,7 @@ const DEFAULT_ROUTE_POINTS = {
 };
 
 const panelSx = {
-  background: 'rgba(9, 14, 26, 0.92)',
+  background: 'rgba(2, 6, 23, 0.92)',
   backdropFilter: 'blur(14px)',
   border: '1px solid rgba(255,255,255,0.08)',
   borderRadius: '8px',
@@ -91,7 +92,7 @@ const fieldSx = {
     borderRadius: '8px',
     '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.24)' },
-    '&.Mui-focused fieldset': { borderColor: '#38bdf8' },
+    '&.Mui-focused fieldset': { borderColor: '#b65f70' },
   },
   '& .MuiInputLabel-root': { color: '#94a3b8' },
 };
@@ -153,12 +154,12 @@ const createAircraftElement = (blocked = false) => {
     display: grid;
     place-items: center;
     pointer-events: none;
-    filter: drop-shadow(0 0 12px ${blocked ? 'rgba(239,68,68,0.95)' : 'rgba(56,189,248,0.95)'});
+    filter: drop-shadow(0 0 12px ${blocked ? 'rgba(239,68,68,0.95)' : 'rgba(182,95,112,0.95)'});
   `;
   shell.innerHTML = `
     <svg width="38" height="38" viewBox="0 0 64 64" aria-hidden="true">
-      <circle cx="32" cy="32" r="20" fill="${blocked ? 'rgba(239,68,68,0.22)' : 'rgba(14,165,233,0.22)'}" stroke="${blocked ? '#fca5a5' : '#7dd3fc'}" stroke-width="2"/>
-      <path d="M31 9 L39 31 L56 38 L55 44 L37 40 L32 55 L27 55 L27 40 L9 44 L8 38 L25 31 Z" fill="${blocked ? '#ef4444' : '#38bdf8'}" stroke="#f8fafc" stroke-width="2" stroke-linejoin="round"/>
+      <circle cx="32" cy="32" r="20" fill="${blocked ? 'rgba(239,68,68,0.22)' : 'rgba(182,95,112,0.22)'}" stroke="${blocked ? '#fca5a5' : '#e17b8f'}" stroke-width="2"/>
+      <path d="M31 9 L39 31 L56 38 L55 44 L37 40 L32 55 L27 55 L27 40 L9 44 L8 38 L25 31 Z" fill="${blocked ? '#ef4444' : '#b65f70'}" stroke="#f8fafc" stroke-width="2" stroke-linejoin="round"/>
       <path d="M26 31 H38" stroke="#0f172a" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
     </svg>
   `;
@@ -280,13 +281,13 @@ const ExpertAnalysisPage = () => {
         id: 'bbox-fill',
         type: 'fill',
         source: 'bbox-source',
-        paint: { 'fill-color': '#38bdf8', 'fill-opacity': 0.12 },
+        paint: { 'fill-color': '#b65f70', 'fill-opacity': 0.12 },
       });
       instance.addLayer({
         id: 'bbox-outline',
         type: 'line',
         source: 'bbox-source',
-        paint: { 'line-color': '#7dd3fc', 'line-width': 2, 'line-dasharray': [3, 2] },
+        paint: { 'line-color': '#e17b8f', 'line-width': 2, 'line-dasharray': [3, 2] },
       });
       instance.addSource('analysis-heatmap', { type: 'geojson', data: emptyCollection });
       instance.addSource('airspace-overlay', { type: 'geojson', data: emptyCollection });
@@ -309,14 +310,14 @@ const ExpertAnalysisPage = () => {
         type: 'fill',
         source: 'airspace-overlay',
         filter: ['==', ['get', 'zone_category'], 'controlled_airspace'],
-        paint: { 'fill-color': '#38bdf8', 'fill-opacity': 0.18 },
+        paint: { 'fill-color': '#b65f70', 'fill-opacity': 0.18 },
       });
       instance.addLayer({
         id: 'airspace-controlled-line',
         type: 'line',
         source: 'airspace-overlay',
         filter: ['==', ['get', 'zone_category'], 'controlled_airspace'],
-        paint: { 'line-color': '#7dd3fc', 'line-width': 2 },
+        paint: { 'line-color': '#e17b8f', 'line-width': 2 },
       });
       instance.addLayer({
         id: 'analysis-heatmap-fill',
@@ -549,12 +550,22 @@ const ExpertAnalysisPage = () => {
     const rect = mapContainer.current.getBoundingClientRect();
     const p1 = map.current.unproject([startPoint.current.clientX - rect.left, startPoint.current.clientY - rect.top]);
     const p2 = map.current.unproject([event.clientX - rect.left, event.clientY - rect.top]);
-    setBbox({
-      west: Number(Math.min(p1.lng, p2.lng).toFixed(6)),
-      east: Number(Math.max(p1.lng, p2.lng).toFixed(6)),
-      south: Number(Math.min(p1.lat, p2.lat).toFixed(6)),
-      north: Number(Math.max(p1.lat, p2.lat).toFixed(6)),
-    });
+    
+    const west = Number(Math.min(p1.lng, p2.lng).toFixed(6));
+    const east = Number(Math.max(p1.lng, p2.lng).toFixed(6));
+    const south = Number(Math.min(p1.lat, p2.lat).toFixed(6));
+    const north = Number(Math.max(p1.lat, p2.lat).toFixed(6));
+
+    if (west < ISTANBUL_AIRSPACE_BOUNDS.west || east > ISTANBUL_AIRSPACE_BOUNDS.east || south < ISTANBUL_AIRSPACE_BOUNDS.south || north > ISTANBUL_AIRSPACE_BOUNDS.north) {
+      setError('selected area is outside of boundaries');
+      setSelectionRect(null);
+      selectionRectRef.current = null;
+      startPoint.current = null;
+      setDrawMode(false);
+      return;
+    }
+
+    setBbox({ west, east, south, north });
     setSelectionRect(null);
     selectionRectRef.current = null;
     startPoint.current = null;
@@ -681,11 +692,18 @@ const ExpertAnalysisPage = () => {
       setIngestJob(created.data);
       const finalJob = await pollIngest(created.data.job_id);
       if (finalJob.status === 'failed') setError('Geodata ingest failed. Select a smaller Istanbul area and try again.');
-      if (finalJob.status === 'success' || finalJob.status === 'partial_success') {
+      if (finalJob.status === 'partial_success') {
+        setError('warning: height data is missing for some buildings in the selected area.');
+        await runAnalysis(finalJob);
+      } else if (finalJob.status === 'success') {
         await runAnalysis(finalJob);
       }
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      if (err.message === 'Network Error' || !err.response) {
+        setError('data service is unavailable. check your internet connection');
+      } else {
+        setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      }
     } finally {
       if (busy !== 'analysis') setBusy('');
     }
@@ -744,7 +762,7 @@ const ExpertAnalysisPage = () => {
   };
 
   return (
-    <Box sx={{ height: '100vh', width: '100%', bgcolor: '#090e1a', overflow: 'hidden', position: 'relative' }}>
+    <Box sx={{ height: '100vh', width: '100%', bgcolor: '#020617', overflow: 'hidden', position: 'relative' }}>
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
       {mapNotice && (
         <Alert severity="info" sx={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 21, maxWidth: 440, fontSize: '0.76rem', py: 0.5 }}>
@@ -753,19 +771,19 @@ const ExpertAnalysisPage = () => {
       )}
       {!mapReady && (
         <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', zIndex: 5, pointerEvents: 'none' }}>
-          <CircularProgress sx={{ color: '#38bdf8' }} />
+          <CircularProgress sx={{ color: '#b65f70' }} />
         </Box>
       )}
       {drawMode && (
         <Box ref={drawOverlay} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} sx={{ position: 'absolute', inset: 0, zIndex: 12, cursor: 'crosshair', userSelect: 'none' }} />
       )}
       {selectionRect && (
-        <Box sx={{ position: 'absolute', zIndex: 13, left: selectionRect.left, top: selectionRect.top, width: selectionRect.width, height: selectionRect.height, border: '2px dashed #7dd3fc', background: 'rgba(56,189,248,0.12)', pointerEvents: 'none' }} />
+        <Box sx={{ position: 'absolute', zIndex: 13, left: selectionRect.left, top: selectionRect.top, width: selectionRect.width, height: selectionRect.height, border: '2px dashed #e17b8f', background: 'rgba(182,95,112,0.12)', pointerEvents: 'none' }} />
       )}
 
       <Paper sx={{ ...panelSx, position: 'absolute', top: 16, left: 16, right: 16, zIndex: 20, px: 2, py: 1.3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.4 }}>
-          <Box sx={{ width: 36, height: 36, borderRadius: '8px', display: 'grid', placeItems: 'center', bgcolor: 'rgba(56,189,248,0.14)', color: '#7dd3fc' }}>
+          <Box sx={{ width: 36, height: 36, borderRadius: '8px', display: 'grid', placeItems: 'center', bgcolor: 'rgba(182,95,112,0.14)', color: '#e17b8f' }}>
             <FlightTakeoffIcon fontSize="small" />
           </Box>
           <Box sx={{ minWidth: 0 }}>
@@ -794,7 +812,6 @@ const ExpertAnalysisPage = () => {
               Draw a bounded Istanbul area, ingest geodata, then run AHP/TOPSIS scoring.
             </Typography>
           </Box>
-          {error && <Alert severity="error">{error}</Alert>}
           <TextField label="Region Name" size="small" value={regionName} onChange={(event) => setRegionName(event.target.value)} sx={fieldSx} />
           <Stack direction="row" spacing={1}>
             <Button fullWidth startIcon={<CropFreeIcon />} variant={drawMode ? 'contained' : 'outlined'} onClick={() => { setDrawMode((prev) => !prev); setError(''); }} sx={{ borderRadius: '8px', textTransform: 'none' }}>
@@ -839,7 +856,7 @@ const ExpertAnalysisPage = () => {
               <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>Istanbul Airspace Overlay</Typography>
               <Stack direction="row" spacing={1}>
                 <Chip label={`NFZ ${airspaceSummary.nfz ?? 0}`} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5', fontWeight: 800 }} />
-                <Chip label={`Controlled ${airspaceSummary.controlled_airspace ?? 0}`} size="small" sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: '#7dd3fc', fontWeight: 800 }} />
+                <Chip label={`Controlled ${airspaceSummary.controlled_airspace ?? 0}`} size="small" sx={{ bgcolor: 'rgba(182,95,112,0.18)', color: '#e17b8f', fontWeight: 800 }} />
               </Stack>
             </Box>
           )}
@@ -858,7 +875,7 @@ const ExpertAnalysisPage = () => {
                 <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem' }}>{criteriaLabels[key]}</Typography>
                 <Typography sx={{ color: '#94a3b8', fontSize: '0.78rem' }}>{Number(value).toFixed(2)}</Typography>
               </Box>
-              <Slider min={0} max={1} step={0.05} value={Number(value)} onChange={(_, nextValue) => setWeights((prev) => ({ ...prev, [key]: Number(nextValue) }))} sx={{ color: '#38bdf8', py: 0 }} />
+              <Slider min={0} max={1} step={0.05} value={Number(value)} onChange={(_, nextValue) => setWeights((prev) => ({ ...prev, [key]: Number(nextValue) }))} sx={{ color: '#b65f70', py: 0 }} />
             </Box>
           ))}
           <Button fullWidth variant="contained" startIcon={<AnalyticsIcon />} onClick={() => runAnalysis()} disabled={!canRunAnalysis || Boolean(busy)} sx={{ bgcolor: '#16a34a', borderRadius: '8px', textTransform: 'none', fontWeight: 800, '&:hover': { bgcolor: '#15803d' } }}>
@@ -924,7 +941,7 @@ const ExpertAnalysisPage = () => {
             <Button fullWidth startIcon={<SwapHorizIcon />} onClick={swapExpertRoute} sx={{ color: '#cbd5e1', borderRadius: '8px', textTransform: 'none' }}>
               Swap
             </Button>
-            <Button fullWidth startIcon={<MyLocationIcon />} onClick={resetExpertRoute} sx={{ color: '#7dd3fc', borderRadius: '8px', textTransform: 'none' }}>
+            <Button fullWidth startIcon={<MyLocationIcon />} onClick={resetExpertRoute} sx={{ color: '#e17b8f', borderRadius: '8px', textTransform: 'none' }}>
               Defaults
             </Button>
           </Stack>
@@ -983,7 +1000,7 @@ const ExpertAnalysisPage = () => {
                   </Box>
                 ))}
               </Stack>
-              <Button variant="outlined" onClick={compareTopCandidates} disabled={busy === 'compare' || analysisResult.top_candidates.length < 2} sx={{ color: '#7dd3fc', borderColor: 'rgba(125,211,252,0.4)', borderRadius: '8px', textTransform: 'none' }}>
+              <Button variant="outlined" onClick={compareTopCandidates} disabled={busy === 'compare' || analysisResult.top_candidates.length < 2} sx={{ color: '#e17b8f', borderColor: 'rgba(125,211,252,0.4)', borderRadius: '8px', textTransform: 'none' }}>
                 Compare Top Candidates
               </Button>
               {compareResult && (
@@ -1010,7 +1027,7 @@ const ExpertAnalysisPage = () => {
         <Typography sx={{ color: '#cbd5e1', fontSize: '0.7rem', fontWeight: 800, mb: 0.8 }}>Map Layers</Typography>
         {[
           ['NFZ', '#ef4444'],
-          ['Controlled', '#38bdf8'],
+          ['Controlled', '#b65f70'],
           ['Suitability', '#22c55e'],
         ].map(([label, color]) => (
           <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
@@ -1026,9 +1043,39 @@ const ExpertAnalysisPage = () => {
           <LinearProgress
             variant="determinate"
             value={jobProgress.percent}
-            sx={{ height: 8, borderRadius: '8px', bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: '#38bdf8' } }}
+            sx={{ height: 8, borderRadius: '8px', bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: '#b65f70' } }}
           />
-          <Typography sx={{ color: '#7dd3fc', fontWeight: 900, fontSize: '0.86rem', mt: 1, textAlign: 'right' }}>{jobProgress.percent}%</Typography>
+          <Typography sx={{ color: '#e17b8f', fontWeight: 900, fontSize: '0.86rem', mt: 1, textAlign: 'right' }}>{jobProgress.percent}%</Typography>
+        </Box>
+      </Modal>
+
+      <Modal open={!!error && !error.includes('warning')} onClose={() => setError('')} disableAutoFocus>
+        <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 420, maxWidth: 'calc(100% - 32px)', ...panelSx, p: 2.4, border: '1px solid rgba(182, 95, 112, 0.6)', boxShadow: '0 10px 40px rgba(182, 95, 112, 0.3)' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+            <Typography sx={{ color: '#b65f70', fontWeight: 900, fontSize: '1.1rem' }}>Analysis Error</Typography>
+            <IconButton size="small" onClick={() => setError('')} sx={{ color: '#94a3b8', mt: -0.5, mr: -0.5 }}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+          <Typography sx={{ color: '#cbd5e1', fontSize: '0.85rem' }}>{error}</Typography>
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button variant="contained" onClick={() => setError('')} sx={{ bgcolor: '#b65f70', color: '#fff', '&:hover': { bgcolor: '#9a4c5a' }, textTransform: 'none', borderRadius: '8px' }}>Close</Button>
+          </Box>
+        </Box>
+      </Modal>
+
+      <Modal open={!!error && error.includes('warning')} onClose={() => setError('')} disableAutoFocus>
+        <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 420, maxWidth: 'calc(100% - 32px)', ...panelSx, p: 2.4, border: '1px solid rgba(225, 123, 143, 0.5)', boxShadow: '0 10px 40px rgba(225, 123, 143, 0.2)' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+            <Typography sx={{ color: '#e17b8f', fontWeight: 900, fontSize: '1.1rem' }}>Analysis Warning</Typography>
+            <IconButton size="small" onClick={() => setError('')} sx={{ color: '#94a3b8', mt: -0.5, mr: -0.5 }}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+          <Typography sx={{ color: '#cbd5e1', fontSize: '0.85rem' }}>{error}</Typography>
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button variant="contained" onClick={() => setError('')} sx={{ bgcolor: '#e17b8f', color: '#020617', fontWeight: 800, '&:hover': { bgcolor: '#c96a7d' }, textTransform: 'none', borderRadius: '8px' }}>Acknowledge</Button>
+          </Box>
         </Box>
       </Modal>
     </Box>

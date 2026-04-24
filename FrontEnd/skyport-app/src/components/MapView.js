@@ -25,7 +25,7 @@ const MAP_STYLES = [
 ];
 
 const glassPanel = {
-  background: 'rgba(10, 18, 35, 0.88)',
+  background: 'rgba(2, 6, 23, 0.88)',
   backdropFilter: 'blur(14px)',
   border: '1px solid rgba(255,255,255,0.08)',
   borderRadius: '12px',
@@ -116,7 +116,7 @@ const MapView = () => {
         id: 'bbox-fill',
         type: 'fill',
         source: 'bbox-source',
-        paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.12 },
+        paint: { 'fill-color': '#b65f70', 'fill-opacity': 0.12 },
       });
       map.current.addLayer({
         id: 'bbox-outline',
@@ -261,10 +261,10 @@ const MapView = () => {
             width: selectionRect.width,
             height: selectionRect.height,
             border: '2px dashed #60a5fa',
-            background: 'rgba(59, 130, 246, 0.1)',
+            background: 'rgba(182, 95, 112, 0.1)',
             pointerEvents: 'none',
             zIndex: 6,
-            boxShadow: '0 0 0 1px rgba(59,130,246,0.2)',
+            boxShadow: '0 0 0 1px rgba(182,95,112,0.2)',
           }}
         />
       )}
@@ -289,15 +289,15 @@ const MapView = () => {
                 textTransform: 'none',
                 fontSize: '0.78rem',
                 fontWeight: 600,
-                borderColor: drawMode ? 'transparent' : 'rgba(59,130,246,0.4)',
+                borderColor: drawMode ? 'transparent' : 'rgba(182,95,112,0.4)',
                 color: drawMode ? '#fff' : '#60a5fa',
                 background: drawMode
-                  ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
-                  : 'rgba(59,130,246,0.07)',
+                  ? 'linear-gradient(135deg, #b65f70, #2563eb)'
+                  : 'rgba(182,95,112,0.07)',
                 '&:hover': {
                   background: drawMode
                     ? 'linear-gradient(135deg, #2563eb, #1d4ed8)'
-                    : 'rgba(59,130,246,0.14)',
+                    : 'rgba(182,95,112,0.14)',
                 },
               }}
             >
@@ -359,7 +359,7 @@ const MapView = () => {
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   px: 1.5, py: 0.8, borderRadius: 1, cursor: 'pointer',
                   transition: 'all 0.15s',
-                  background: activeStyle === style.id ? 'rgba(59,130,246,0.15)' : 'transparent',
+                  background: activeStyle === style.id ? 'rgba(182,95,112,0.15)' : 'transparent',
                   '&:hover': { background: 'rgba(255,255,255,0.06)' },
                 }}
               >
@@ -459,7 +459,7 @@ const MapView = () => {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mb: 1 }}>
-            <InfoOutlinedIcon sx={{ fontSize: 14, color: '#3b82f6' }} />
+            <InfoOutlinedIcon sx={{ fontSize: 14, color: '#b65f70' }} />
             <Typography variant="subtitle2" sx={{ color: '#94a3b8' }}>
               Selected Area
             </Typography>
@@ -512,8 +512,8 @@ const MapView = () => {
             sx={{
               ...glassPanel,
               px: 3, py: 1.5,
-              border: '1px solid rgba(59,130,246,0.3)',
-              background: 'rgba(10, 18, 35, 0.75)',
+              border: '1px solid rgba(182,95,112,0.3)',
+              background: 'rgba(2, 6, 23, 0.75)',
             }}
           >
             <Typography sx={{ fontSize: '0.82rem', color: '#94a3b8', textAlign: 'center' }}>

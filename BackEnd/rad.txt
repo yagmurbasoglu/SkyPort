@@ -1,0 +1,1096 @@
+Page 1 of 44
+COMP/SOFT4902/4912
+Graduation Design Project
+Project Title
+SkyPort: Geographic Simulation for Urban Air Mobility
+Yağmur BAŞOĞLU / 21COMP1016, Nehir KARAMEŞE / 22COMP1041
+REQUIREMENTS ANALYSIS DOCUMENT
+1. Introduction
+This document has been prepared to present the requirements analysis and technical framework of
+the SkyPort project. This project offers an innovative solution in the field of urban air mobility. SkyPort
+is a Geographic Decision Support System (GDSS) model that digitizes manual site selection processes
+through open-source spatial data and advanced decision-making algorithms. By integrating live opensource spatial data with sophisticated Multi-Criteria Decision Making (MCDM) algorithms over a
+discrete hexagonal spatial grid, the system delivers mathematically optimized infrastructural insights.
+With this system is its dual-actor architecture, analysts and passengers no longer operate in separate
+silos. They share a common platform where infrastructure decisions and travel planning feed into each
+other.
+Throughout the document, the system's core functions, operational limitations, engineering success
+criteria, and the project's academic objectives are discussed. It is intended to be used as a reference
+document during the design and implementation phases for all modules in the development process.
+1.1. Purpose of the System
+The main objective of this project is to design and develop a web-based Geographic Decision
+Support System (GDSS) leveraging open-source geographic data to identify the optimal location for
+the establishment of the Vertiport, considering the Urban Air Mobility (UAM) scope in Istanbul, and
+then to establish a web-based bidirectional system to enable the use of the network for the end-users.
+Page 2 of 44
+The system also has the ability to analyse multiple criteria such as height (obstacles), transport
+networks, land use, meteorological conditions, traffic density, socioeconomic factors, and restricted
+flight zones. With the Multi-Criteria Decision Making (MCDM) algorithm to be developed, it is
+possible to automatically calculate the "Vertiport Suitability Score" for coordinates that can be set by
+the user depending on their needs. In such a manner, it is possible to provide a flexible decision support
+tool for institutions, organizations, and individuals interested in investing in Vertiports. Additionally,
+it is also possible to save the results obtained from previous analyses.
+The end-user (B2C) module of the system directly provides passengers with access to the vertiport
+network, which has been approved through analysis. Passengers can filter vertiports according to their
+personal preferences (cost, distance, noise, etc.), select the most suitable point for their travel plans,
+and add frequently used locations such as home/work to their favourites for a personalized experience.
+In conclusion, unlike a standard navigation or map application, this system aims to be a systematic
+engineering tool for visualizing manual feasibility processes with interactive heatmaps and simulated
+safe flight routes, and also an end-to-end service portal for integrating passengers into the UAM
+ecosystem.
+1.2. Scope of the System
+SkyPort is a two-way (B2B and B2C) interactive platform that helps users plan and experience
+Urban Air Mobility (UAM) infrastructure specifically in Istanbul. Using different geographic data
+sources, the system provides data-driven decision support for vertiport site selection, while also making this validated network accessible to end-users.
+The system offers the following core capabilities:
+• Globally Scalable Software Architecture: A general analysis platform using Istanbul as a
+pilot region but adaptable to any metropolis in terms of its data structure.
+• Full-Stack Geographic Development: The design and implementation of a robust spatial
+database (PostgreSQL/PostGIS), a Python-based algorithmic data processing layer, and a
+React/Mapbox-based interactive graphical user interface.
+• Safe Route Analysis: Developing a basic routing algorithm that avoids obstacles between
+selected stations.
+• Data-Driven Location Analysis: By utilizing spatial indexing (such as the H3 Hexagonal Grid
+system), this involves the integrated analysis of building height (obstacles), transportation
+infrastructure, traffic density, and socioeconomic factors, which can be obtained from
+OpenStreetMap and other open data sources.
+• Dynamic Criterion Weighting (MCDM): This enables the user to set their own parameters
+for the Multi-Criteria Decision Making (MCDM – AHP/TOPSIS) algorithm, which will be
+integrated into the decision support system.
+Page 3 of 44
+• Visualization and Simulation: Providing visualization of analysis results through an
+interactive heatmap on a Mapbox-based map and simulating safe flight routes without obstacles
+from one location to another.
+• Analysis Management and Reporting (B2B): Providing experts with an ability to compare
+various location alternatives based on their scores, view detailed results of each location analysis, save previous results of location analysis to experts’ profiles, and export results.
+• End-User Interaction (B2C): Providing end users with an ability to view an approved network of vertiports, view results of filtering by their own preferences (cost, distance, noise
+level, etc.), choose travel destinations, and save frequently visited locations to favourites
+(Home, Work, etc.).
+The system's core user roles are:
+1. Expert User (Urban Planner/Aviation Investor-Analyst): User will carry out strategic
+analysis by linking the provided Vertiport infrastructure to urban planning and will report the
+results. The user will assess the operational safety and commercial potential of potential investment locations, identify the most suitable investment location, and use comparison tools.
+2. Customer/Passenger: The customer will filter the provided vertiports according to their criteria using the system, select the points for boarding and disembarking for their personal use,
+and manage their favourite points.
+Out of Scope
+To define the system's limitations, the following features have been excluded from the project scope:
+• Real-time air traffic control, flight tracking, or handling of aircraft.
+• Financial ticketing, payment infrastructures (payment gateways), or management of actual
+commercial flight reservations (The Passengers will only plan their flight using the system
+and select/filter the points; there is no financial ticketing for them to purchase a flight.)
+• Physical hardware, sensor development, in-vehicle software integration.
+• Real-time data analysis for cities other than Istanbul
+1.3. Objectives and Success Criteria of the Project
+The project's success criteria are as follows:
+• The delivery of a fully functional web simulator, accessible via a standard web browser, for
+personal computers, acting as a proof of concept for both professionals (B2B) and
+passengers (B2C).
+• The Multi-Criteria Decision Making (MCDM) algorithm developed must effectively
+process physical barriers (mania), transportation integration, environmental, and
+socioeconomic impact criteria to produce an understandable “Vertiport Suitability Score”
+while ensuring expert users can effectively save the results of their analysis to their profiles
+and export them in report form.
+• Approved vertiport locations should be displayed perfectly on the customer/passenger interface, and it should be possible to filter these locations according to personal preferences
+Page 4 of 44
+(distance, costs, noise level, etc.), choose boarding and disembarking points, and mark frequently used locations as favourites.
+• The proposed three-tier software architecture (React front-end, Python back-end,
+PostgreSQL/PostGIS database) and actor-specific session management (login/logout)
+infrastructure should be perfectly integrated, and the system should work without critical
+errors.
+• Suitability results should be displayed in an interactive heatmap format, and safe route
+suggestions should also be provided to the user between the chosen optimum locations.
+• Project should be completed in the proposed timeframe, and all proposed functional and
+non-functional requirements should be met.
+• The developed system should demonstrate environmental and social sensitivity in line with
+United Nations Sustainable Development Goals 9 (Industry, Innovation, and Infrastructure)
+and 11 (Sustainable Cities and Communities)
+1.4. Definitions, Acronyms, and Abbreviations
+• SkyPort: Name of the proposed and developed bidirectional (B2B and B2C) Decision Support
+System and vertiport network platform.
+• RAD (Requirements Analysis Document): Document that describes the scope, goals, and
+functional specifications of a proposed project.
+• UAM (Urban Air Mobility): Technological environment that provides urban air mobility.
+• eVTOL (Electric Vertical Take off and Landing): Next-generation aircraft that are electricpowered and allow vertical take off and landing.
+• Vertiport: Locations where operational activities of eVTOLs take place, take off and landing
+and charging of aircraft, and transferring of passengers.
+• MCDM (Multi-Criteria Decision Making): Algorithmic structures that identify the most suitable
+decision alternative based on various criteria (AHP and TOPSIS techniques) in decision-making
+processes.
+• Obstacles: Buildings, towers, and high-voltage lines that impact flight safety of aircraft.
+• PostGIS: An extension of PostgreSQL that provides geographic/location-based (spatial) queries
+in a database environment.
+• NFZ (No Fly Zone): Locations where flight is prohibited.
+• B2B (Business-to-Business): The platform's expert (management) module focused on analysis
+and reporting, used by urban planners and aviation investors.
+Page 5 of 44
+• B2C (Business-to-Consumer): The platform's end-user module serving customers and
+passengers directly, focusing on filtering, booking scheduling, and favourite management.
+• User: any person who uses the system.
+1.5. Overview
+This Requirements Analysis Document (RAD) is structured to present the technical, architectural,
+and functional details of the SkyPort bidirectional (B2B and B2C) Decision Support System and
+platform, and consists of six main sections:
+• Section 1 : Introduction: This section provides an overview of the major framework of this
+project and includes a brief overview of the reasons for developing this system, the purpose
+of this system, scope, success criteria, and major definitions.
+• Section 2: Current System: This section is intended to analyse the current manual feasibility
+studies or digital solutions available in the field of Urban Air Mobility (UAM), and it will be
+made clear which issues are being addressed.
+• Section 3: Proposed System: This is the major part of this document and includes an overview of functional requirements (Use Cases and Scenarios), non-functional quality attributes,
+and system models that this system will provide to users, including professionals (B2B) and
+passengers (B2C).
+• Section 4: Other Analysis Elements: This section includes a detailed project plan, which
+includes risks that can be encountered during this project process and possible alternatives.
+• Section 5: Glossary: Provides comprehensive definitions necessary for the correct interpretation of technical terms, abbreviations, and field-specific concepts used in the document.
+• Section 6: References: Lists all academic publications, technical documentation, and data
+sources used in the requirements engineering and initial stages of the project.
+2. Current System
+Today, Urban Air Mobility (UAM) is a brand-new and developing industry, and therefore, there is
+no standardized and publicly available integrated software for the selection of the vertiport and the
+delivery of the network to the end user.
+Currently, these studies are carried out by city planners and aviation companies. When carrying out
+a study for a specific region to check the suitability for a UAM network, 3D data for buildings,
+transportation network data, and zoning data need to be collected separately from different
+organizations. Analysis is performed manually with a high margin of error, and the process takes
+months. Currently available mapping tools, such as Google Maps, can only be used for navigation.
+However, the current systems do not have the ability of a Geographic Decision Support System,
+which can analyse building heights, land use types (noise sensitive areas), and transportation networks
+simultaneously. The absence of an academic and practical tool that can process complex spatial data
+and display the results as a heat map simulation is the major weakness of the current system. From the
+point of view of the users/passengers, the current UAM system does not have a digital platform for
+passengers, potential customers, to plan their future eVTOL (air taxi) routes and filter and view
+approved active vertiports according to their own preferences (cost, distance, noise).
+The SkyPort system aims to eliminate these limitations. It offers a Geographic Decision Support
+System that can perform spatial analysis quickly and systematically by automatically integrating
+different sources of geographic data. The system uses multi-criteria analysis to evaluate the possible
+locations for a Vertiport, which are then presented to the user as an interactive heat map. At the same
+Page 6 of 44
+time, the system also makes the network accessible to passengers and changes the existing manual
+process to a digitized bidirectional process.
+3. Proposed System
+ This section presents how the SkyPort system works, the stakeholders of the system, the actors
+involved, and the functional features of the system. The overall structure of the system is presented.
+SkyPort is not just a Geographic Decision Support System (GDS) prototype to identify the most
+suitable locations for eVTOL (electronic taxi) vertiports within a city. Instead, it is a web based
+integrated system that allows the public to access the network directly. It is a bidirectional web based
+integrated system (B2B, B2C) applicable to the city of Istanbul as a pilot city.
+3.1. Overview
+SkyPort is a bidirectional (B2B and B2C) web based integrated Geographic Decision Support
+System (GDSS), designed to identify the best locations for vertiport infrastructure under the context
+of Urban Air Mobility (UAM), and to make the network available to end users.
+The SkyPort system is a comprehensive analysis platform that allows users to:
+• Select and manage the urban areas to be analysed via the map interface;
+• Real-time retrieval of building height (mania), transportation infrastructure, and land use data
+from open data sources (OSM) and index them on an H3 hexagonal grid architecture,
+• Dynamically perform vertiport suitability analysis and compare options using Multi-Criteria
+Decision Making (MCDM/AHP/TOPSIS),
+• Visualize analysis results in interactive heatmaps and save them as reports to expert profiles,
+• Compare alternative Vertiport locations,
+• Plan safe travel routes between potential Vertiport points and manage their favourite locations,
+• Allow passengers to view the vertiport network approved by experts and filter according to
+their personal priorities such as distance, cost or noise.
+The SkyPort system includes various stakeholders and actors who interact with the system and
+contribute to its development.
+Actors:
+1. Expert User (Urban Planner / Aviation Investor) - [B2B] This is the main actor for the
+analysis, calculation, and management (B2B) part of the system. This actor will choose regions on
+the map, set the weight parameters for the Multi-Criteria Decision Making (MCDM) algorithm
+according to their strategic or commercial goals. This actor will evaluate the suitability analysis
+results provided by the system.
+2. Passenger - [B2C] This is the actor for the customer portal (B2C) side of the system. This actor
+does not interact with the analysis algorithm. Instead, they will look at the active vertiport network
+Page 7 of 44
+that has been analysed and approved by the Expert User on the map. This actor will filter the
+vertiport based on their travel preferences. This actor will choose the boarding/disembarking points
+for the vertiport. This actor will add the routes to the favourite list.
+Stakeholders:
+1. Civil Aviation Authorities (e.g., DGCA): Urban Air Mobility System needs to adhere to the civil
+aviation regulations and airspace regulations (No Fly Zone - NFZ). Though they are not using the
+system as a user through the interface, they are the most important stakeholders since the analysis
+and simulation carried out by the system have to adhere to their safety regulations.
+2. External Data Providers (e.g., OpenStreetMap): The Urban Air Mobility System needs
+accurate geographical information to perform the analysis. Open-Source Platforms such as
+OpenStreetMap are external stakeholders who provide the necessary data such as building heights
+(obstacles), transportation network data, etc. This data is fed into the system in the background.
+3. Software Development Team: This team is responsible for the architectural design of the
+SkyPort System, coding the MCDM Algorithm, PostGIS Database Management, etc. This team
+ensures the sustainability of the project from a PoC (proof of concept) to a product.
+The addition of all the stakeholders and actors to the system allows the Urban Air Mobility System
+to perform the functions of a data-driven decision support system.
+3.2. Requirements
+This section highlights the basic functions that are expected from the SkyPort system. The
+requirements established are the processes through which the system processes the geographical
+information received from the user, transforming the information into a more useful output, which can
+either be a map or a vertiport availability score. The processes established are used to create a strategic
+decision support tool for B2B professionals, while for B2C travellers, the processes are used to create
+a travel guide, thereby highlighting the two-way value proposition of the system. The functions
+established by the system, as well as the interaction with the user, are highlighted in the "Use Cases"
+section below.
+3.2.1. Use Cases
+SHARED USAGE SITUATIONS (B2B & B2C)
+UC1: Creating an Account: Priority: High
+Users who want to log in for the first time create an account by choosing the type of account that
+they want to use the system with their own profile. Once the user enters their email and password,
+the system checks the user’s information and creates a new user profile in the system database. The
+user can then log in to the dashboard according to their type.
+UC2: Login: Priority: High
+Registered users who want to log in to the system and use their past analytics or their favourite
+locations log in by entering their email and password. The system checks the user’s information from
+the database and loads the interface according to their type.
+UC3: Simulate Flight Route: Priority: Medium
+User being a feasibility testing expert or a passenger planning a trip, selects the departure point and
+arrival point on the map for the flight route between these two points. The user then requests the
+system to simulate the safest flight route between these two points. The system then searches for any
+Page 8 of 44
+physical barriers between these points. It also requests the wind speed from the external weather API
+and compares it with safety limits. If all the requirements are met, the system utilizes pathfinding
+algorithms to simulate the safest flight route between these points on the map without any chance of
+a collision. If the requirements are not met, the system does not allow the user to simulate the flight
+route and send a cancellation warning message.
+EXPERT USER (B2B) SITUATIONS
+UC4: Select Analysis Region: Priority: High
+Expert user (city planner or investor) selects the target region they wish to analyse in Istanbul by using the
+integrated Mapbox map interface. This selection may be done by drawing a bounding box on the map or by
+centring a specific coordinate point on a radius basis. Once the user has selected the region, the system will
+sequentially carry out the following complex operations:
+Firstly, the system will retrieve building (obstacle), transportation, and land data for the selected region from
+the OpenStreetMap (OSM) data repository or PostGIS spatial database. Then, the selected region will be
+divided into cells by using the Uber H3 Hexagonal Grid data structure. At the same time, the Multi-Criteria
+Decision Making (MCDM - AHP/TOPSIS) mathematical model algorithm will be executed by the system to
+calculate a suitability score between 0 and 100 for each cell. Next, the results will be visualized on the map by
+creating a heatmap in green for high suitability scores or in red for low suitability or risky areas.
+UC5: Adjust Criteria Weights: Priority: High
+The decision-making expert can change the levels of importance for different analysis criteria, such
+as accessibility, noise sensitivity, and restrictions in terms of obstructions, through the control panel
+on the system interface, based on their strategy. Once the expert saves these parameters, the system
+checks if their sum is exactly 100%, sends these parameters to the system algorithm, and then
+instantly calculates the results again, presenting them on the screen in the form of a heat map.
+UC6: Inspect Cell Details: Priority: Medium
+Expert users can click on any hexagonal cell on the screen, where they will be able to see detailed
+results of the analysis for that specific cell on the screen. The system will present these results in the
+detail panel in terms of what constitutes the final suitability score for a given cell on the screen, for
+example, the impact of obstructions, transportation, and environmental factors on the cell's suitability
+score.
+UC7: Compare Candidate Locations: Priority: Medium
+Expert user can compare several Vertiport candidate locations that have high suitability scores, as
+indicated by the system. The system allows the expert user to view the suitability scores and criterion
+contributions of the selected locations side by side, which makes it easy for them to compare them
+and establish which one is suitable.
+UC8: Save Analysis to Profile: Priority: Low
+Expert users save a heat map analysis that they have successfully completed in their profile for later
+viewing or future work. The system saves the current view of the map, coordinates, and criterion
+weights used for the analysis to the "Past Analyses" tab of the expert user's database.
+UC9: Export Analysis Report Priority: Medium
+Expert user requests that the system download the generated suitability map and location information
+for them to their computer for later use in meetings or presentations internally. The system renders
+the current view of the map and score information in GeoJSON data format or PDF report format,
+then allows the expert user to download it.
+PASSENGER / CUSTOMER (B2C) SITUATIONS
+Page 9 of 44
+UC10: View Active Vertiports: Priority: High
+Passenger (end-user) views the available vertiport network on the map that has already been
+previously analysed and approved by experts and added to the system. The system displays the
+approved (active) vertiport coordinates from the database on the map layer as a marker (pin) that
+represents the point where the passenger can receive the service.
+UC11: Filter Vertiport Network: Priority: High
+The passenger further refines his choices by filtering the active vertiports shown on the map based on
+his personal needs (e.g., closest distance, most cost-effective location, least noise level, etc.). The
+system compares the input data from the passenger through the interface with the vertiport data from
+the database and immediately hides the markers that do not match the criteria from the map layer.
+UC12: Manage Favourite Locations: Priority: Low
+The passenger adds, updates, or deletes his frequently visited locations like home or work, or
+personal points at vertiports from his "Favourites" list. The system marks these user-selected points
+in the database and highlights them on the map by a special icon (star) the next time the user opens
+the map.
+3.2.2. Scenarios
+UC1-Description:
+Table 1
+Overview
+Scenario Title Create Account
+Description This is the process by which a user (expert or passenger) who is logging in to the system for the first
+time registers by choosing an account type in order to use the system with their own profile.
+Actors and Interfaces Actors: Expert (B2B), Passenger (B2C)
+Interfaces: Registration Form Interface (Frontend), Authentication Service (Auth API / Database)
+Initial Status and
+Preconditions
+The user should have access to the application's "Register" page.
+The email address that the user submits in the form should not be previously registered in the system.
+Basic Flow
+Step 1: The user selects the type of account, either Expert/B2' or Passenger/B2C.
+Step 2: The user enters the first name, last name, email address, and password, and clicks the Register button.
+Step 3: The system checks the format of the entered values (email format, password strength).
+Step 4: The system checks whether the email address is unique in the database.
+Step 5: The system adds a new user by storing the user's information and the type of user account selected in the database.
+Step 6: The system shows a confirmation message on the screen, and the user is redirected to the dashboard according to the user type.
+Post Condition
+A new user is successfully registered, and the user's session (login status) is activated.
+Alternative Flow(s)
+1a. Registered Email Error Flow
+UC2-Description:
+Table 2
+Overview
+Scenario Title Login
+Description This is the procedure by which a registered user (expert or passenger) uses their email address and
+password to log into the system to access their past analytics or favourite locations.
+Actors and Interfaces Actors: Expert (B2B), Passenger (B2C)
+Interfaces: Login Form Interface (Frontend), Authentication Service (Auth API/Database)
+Initial Status and
+Preconditions
+The user needs to have access to the application "Log In" page.
+The user needs to have a previously created active account in the system.
+Page 10 of 44
+Basic Flow
+Step 1: The user submits the form by entering the email address and password.
+Step 2: The user clicks the "Log In" button.
+Step 3: The system verifies the provided information (email address and password) by accessing the database.
+Step 4: The system identifies the verified user type (B2B or B2C) and establishes a session (session/token).
+Step 5: The system redirects the user to the main interface (control panel) according to the authorized user type.
+Post Condition
+The user is now logged in to the system and can access the interface according to their permissions.
+Alternative Flow(s)
+2a. Incorrect Credential Flow
+UC3-Description:
+Table 3
+Overview
+Scenario Title Simulate Flight Route
+Description This is the process where the user chooses their departure and arrival points on the map, then asks the
+system to plot and analyse the safest route for a flight between these two points.
+Actors and Interfaces Actors: Expert (B2B), Passenger (B2C)
+Interfaces: Map Interface (Mapbox), Route Algorithm Engine (Python), External Weather API,
+Pathfinding Algorithm (Python)
+Initial Status and
+Preconditions
+User must be logged in and have access to Map Interface.
+At least two approved/candidate vertiport points must be present on the map.
+Basic Flow
+Step 1: The user chooses one of the Vertiport locations provided by the system on the map as their "Departure" and the other as their
+"Arrival."
+Step 2: The system queries the PostGIS database for spatial data on building heights, no-fly zones, etc., between these two points.
+Step 3: The system queries the external meteorological API for real-time weather and wind speed at these coordinates.
+Step 4: The pathfinding algorithm calculates the shortest route that avoids no-fly zones and other obstacles such as skyscrapers, etc.
+Step 5: The system displays a linear route on the map, calculated by the pathfinding algorithm, as a safe route for a flight.
+Post Condition
+A flight route conforming to safety standards was successfully established between the two points, and flight metrics were presented to
+the user.
+Alternative Flow(s)
+3a. The system will show a warning if a safe route cannot be established between the selected points due to the density of obstacles.
+UC4-Description:
+Table 4
+Overview
+Scenario Title Select Analysis Region
+Description This is the process where an expert user selects an urban area of interest for which they would like to
+carry out a feasibility study through the map interface, and the system extracts the geographic data for
+that area, displaying the MCDM algorithm's suitability scores on the map. r.
+Actors and Interfaces Actors: Expert (B2B)
+Interfaces: Map Interface (Mapbox), Data Extraction Service (OSM), MCDM Algorithm Engine
+(Python), PostGIS Database
+Initial Status and
+Preconditions
+The expert user (urban planner/investor) has logged into the system and accessed the map screen.
+The Mapbox-based map interface should have been loaded successfully.
+Basic Flow
+Step 1: The user opens the integrated map interface provided by Mapbox and activates the "Select Area" tool on the map.
+Step 2: The user selects the area of interest that needs analysis by creating a bounding box or specifying a centre point and radius on
+the integrated Mapbox map interface.
+Step 3: The user clicks on the "Start Analysis / Confirm" button.
+Step 4: The system checks if the coordinates of the selected area are within the boundaries of Istanbul.
+Step 5: The system stores the area of interest that was selected by the user and prepares it for data retrieval.
+Page 11 of 44
+Step 6: The system retrieves the coordinates of the area of interest that was selected by the user, sends a request to OpenStreetMap
+services, and retrieves building (obstacle), transportation, and terrain data for that area of interest.
+Step 7: The system stores the data that was obtained in Step 6 into the PostGIS database for processing in the "Multi-Criteria Decision
+Making" algorithm, notifies the user that data retrieval was successful, and is ready for the "Simulation" phase.
+Step 8: The system divides the target region into thousands of discrete hexagonal cells using an Uber H3 Hexagonal Grid structure.
+Step 9: Using the collected data, the system simultaneously runs the Multi-Criteria Decision Making (MCDM - AHP/TOPSIS)
+mathematical model and calculates a "Vertiport Suitability Score" between 0 and 100 for each cell.
+Step 10: The system visualizes these calculated scores as an interactive heatmap on the map, using green for high suitability and red
+for low suitability or risky areas.
+Post Condition
+Spatial data for the selected region has been successfully processed, and a heat map simulation has been generated on the screen. The
+user is ready for a detailed examination.
+Alternative Flow(s)
+4a. Data Source Unavailable (API Error)
+4b. Selected Region Too Large (Performance Limit)
+4c. If the selected area is outside the Istanbul city limits, the system displays a warning message to the user and prompts them to select
+a new area.
+UC5-Description:
+Table 5
+Overview
+Scenario Title Adjust Criteria Weights
+Description This is the procedure by which the decision-making expert adjusts the levels of importance for the
+analysis criteria (transportation, noise, obstacles, etc.) according to its own strategy, as well as the
+results of the analysis.
+Actors and Interfaces Actors: Expert(B2B)
+Interfaces: Criterion Control Panel (Sliders), MCDM Algorithm Engine
+Initial Status and
+Preconditions
+The user must have successfully completed UC4 and a heatmap must have been generated on the
+screen.
+Basic Flow
+Step 1: The user invokes the "Set Criteria Weights" panel in the map interface.
+Step 2: The system presents the user with the current criteria and their current weights in percentage form via sliders.
+Step 3: The user changes the weights for analysis criteria such as accessibility, noise sensitivity, and obstruction restrictions via the
+control panel in the system interface.
+Step 4: The user clicks the "Save Values / Recalculate" button.
+Step 5: The system checks whether the sum of the weights that were just input by the user is equal to 100%.
+Step 6: The system sends the new parameters to the background decision engine for renormalization of the AHP matrices.
+Step 7: The system updates the colour distribution in the heatmap in the map based on the newly calculated scores.
+Post Condition
+The analysis results have been successfully updated according to the strategic weights entered by the user.
+Alternative Flow(s)
+5a. If the sum of the criterion weights does not equal 100%, the system will show a warning.
+UC6-Description:
+Table 6
+Overview
+Scenario Title Inspect Cell Details
+Description This is the process where an expert user chooses a particular cell of the heat map and analyses in detail
+the criterion contributions that constitute the Vertiport suitability score calculated for that particular
+location.
+Actors and Interfaces Actors: Expert (B2B)
+Interfaces: Map Interface, Detail Analysis Panel
+Page 12 of 44
+Initial Status and
+Preconditions
+A calculated and visualized heat map is displayed on the screen.
+Basic Flow
+Step 1: The user clicks on any hexagonal cell on the heat map that they want to look at in detail.
+Step 2: The system will query the database for the data on the geographic data and calculated score breakdowns for the clicked cell.
+Step 3: The system will bring up the "Cell Detail Panel" on the side or bottom of the screen.
+Step 4: The system will display the calculated suitability score for the clicked cell, as well as the criteria that make up the suitability
+score for the cell (mania effect, transportation integration, environmental factors, etc.) in the panel.
+Post Condition
+The user will have a clear understanding of the reasons for the suitability of a particular location.
+Alternative Flow(s)
+6a. If the detailed data for the clicked cell is not available in the database, the system will show an error message.
+UC7-Description:
+Table 7
+Overview
+Scenario Title Compare Candidate Locations
+Description This is the process where an expert user selects multiple high-scoring vertiport candidate locations
+suggested by the system and compares the metrics of these regions side-by-side.
+Actors and Interfaces Actors: Expert (B2B)
+Interfaces: Map Interface, Comparison Mode (Dashboard)
+Initial Status and
+Preconditions
+A successful heat map must be displayed on the screen and the user must select at least two different
+candidate cells for comparison.
+Basic Flow
+Step 1: The user selects at least two different candidate locations (cells) that have high suitability scores on the heat map.
+Step 2: The user clicks on the "Compare Candidates" button in the tools panel.
+Step 3: The system retrieves all the suitability scores and criterion contributions of these locations (cost, noise, etc.) from the database.
+Step 4: The system opens a full-screen comparison window (modal) in the user interface.
+Step 5: The system assists the user in making a decision by displaying the suitability scores and criterion contributions of these
+locations side by side in a comparison table or graph.
+Post Condition
+A comparative analysis of the candidate locations that have been selected is displayed on the screen, aiding the decision-making
+process
+Alternative Flow(s)
+7a: In case the user selects only one location, no comparison process will be initiated by the system.
+UC8-Description:
+Table 8
+Overview
+Scenario Title Save Analysis to Profile
+Description This is the process by which an expert user saves a successfully completed heat map analysis to their
+profile for later review or further work.
+Actors and Interfaces Actors: Expert (B2B)
+Interfaces: Map Interface, Database Registration Service
+Initial Status and
+Preconditions
+The user must be logged in and a successfully generated heat map analysis must be displayed on the
+screen.
+Basic Flow
+Step 1: The user clicks on the "Save Analysis" button on the system's interface.
+Step 2: The user provides a name for the analysis (e.g., "Kadıköy 2026 UAM Plan") in the dialog box that appears and clicks on "OK."
+Step 3: The system creates a data package containing the current map view, selected coordinate boundaries, and AHP criterion weights
+used for the analysis.
+Step 4: The system writes this data package into the user's "History" tab in the database in a secure manner.
+Step 5: The system displays a message for the user saying "Analysis successfully saved to your profile."
+Post Condition
+Page 13 of 44
+The analysis data has been securely saved to the user's profile and can be reloaded in subsequent sessions.
+Alternative Flow(s)
+8a. If the server or database connection is interrupted during the saving process, the system stops the process.
+UC9-Description:
+Table 9
+Overview
+Scenario Title Export Analysis Report
+Description This is the process where an expert user downloads the suitability map and location metrics generated
+by the system to their computer for presentation at internal meetings
+Actors and Interfaces Actors: Expert (B2B)
+Interfaces: Export API, Report Generator (Render Engine)
+Initial Status and
+Preconditions
+A successfully calculated heat map and/or reviewed detail panels must be open on the screen.
+Basic Flow
+Step 1: The user clicks on the "Export" button on the interface.
+Step 2: The user selects the report format (Visual PDF Report or Data-based GeoJSON) from the menu that opens.
+Step 3: The system will render the existing map image and scoreboards in the background in the chosen format.
+Step 4: The system will generate a download link for the newly generated file and initiate a download to the user's device.
+Step 5: The system will show a message saying "Report successfully exported" on the interface.
+Post Condition
+The analysis results are downloaded successfully to the user's device in a file format of their choice.
+Alternative Flow(s)
+9a. If the system times out while generating a very large map as a PDF, the process stops and a warning is given to the user.
+UC10-Description:
+Table 10
+Overview
+Scenario Title View Active Vertiports
+Description This is the process by which the passenger (end user) views the available vertiport network, previously
+analysed and approved by experts and added to the system, on a map.
+Actors and Interfaces Actors: Passenger (End User)
+Interfaces: Customer Map Interface (Frontend), Database Query Service
+Initial Status and
+Preconditions
+The passenger must be logged into the system with the "Customer" role.
+Basic Flow
+Step 1: The user clicks the "Open Map" or "Show Active Points" button on the customer dashboard interface.
+Step 2: The system queries the approved (status: active) vertiport coordinates and basic information (name, status) from the database.
+Step 3: The system draws the coordinates as interactive markers on the passenger map layer.
+Step 4: The user clicks on any marker on the map to view the name and general status of that vertiport.
+Post Condition
+The passenger has successfully viewed all active vertiport networks available for service on the map.
+Alternative Flow(s)
+10a. If there are no active vertiports yet confirmed in the database, the system opens the map blank and provides information.
+UC11-Description:
+Table 11
+Overview
+Page 14 of 44
+Scenario Title Filter Vertiport Network
+Description This is the process by which the passenger narrows down their options by filtering the active vertiports
+listed on the map according to their personal needs (closest distance, cheapest location, lowest noise,
+etc.).
+Actors and Interfaces Actors: Passenger (B2C)
+Interfaces: Filtering Menu, Map Interface
+Initial Status and
+Preconditions
+The user must have completed the previous step, UC10, and the active vertiport pins must be shown on
+the screen.
+Basic Flow
+Step 1: The user opens the filtering menu on the interface and enters the preferred parameters (e.g., "Maximum 5km distance," "Low
+Noise Area,").
+Step 2: The user clicks the "Apply" button.
+Step 3: The system compares the parameters entered by the user with the properties of the vertiports shown on the map, as indicated by
+the JSON data.
+Step 4: The system temporarily hides the vertiport markers that do not correspond to the user's requirements from the map.
+Step 5: The system shows the number of filtered results ("3 vertiports found matching your criteria").
+Post Condition
+The map view has been updated to show vertiports that match the passenger's personal preferences.
+Alternative Flow(s)
+11a. If no vertiports remain that match the selected strict filters, the system hides all markers and issues a warning.
+UC12-Description:
+Table 12
+Overview
+Scenario Title Manage Favourite Locations
+Description This is the process of adding, editing, or deleting frequently visited locations, such as home or work, or
+preferred vertiport points, to a "Favourites" list specific to their profile.
+Actors and Interfaces Actors: Passenger (B2C)
+Interfaces: Map Interface, User Profile (Database)
+Initial Status and
+Preconditions
+The user must be logged in with their own session (B2C), and a vertiport point on the map must be
+selected.
+Basic Flow
+Step 1: The user clicks the "Add to Favourites" (Star) icon on the vertiport information card they clicked on the map.
+Step 2: The system will match the ID of the selected vertiport with the current user profile in the database and write it into the
+"Favourites" table.
+The system will fill the "Star" icon on the interface, and the message "Added to Favourites" will be shown on the screen.
+Step 4: On the next opening of the map, the system will highlight this favourite point with a special icon, different from the standard
+markers.
+Post Condition
+The relevant location will be saved in the passenger's personal profile and will be included in a quick access list (favourites).
+3.3. Nonfunctional Requirements
+This section defines the non-functional constraints and quality attributes of the SkyPort Geographic
+Decision Support System that determine the system's architecture, quality, and societal impact.
+• Usability: The system needs to be able to convey complex geographical data (such as building
+heights, transportation networks, terrain types) in an understandable way to urban planners and
+aviation analysts. To achieve this, the "Vertiport Suitability Score" calculated by the system
+will be presented to the user as a heatmap format via the user interface (using React and
+Page 15 of 44
+Mapbox). The "Vertiport Suitability Score" is not just a number; it also needs to be such that
+when the user clicks on any cell on the heatmap, they can view the sub-components of the
+suitability score (i.e., the reason for the suitability score). The passenger interface needs to be
+such that a normal web user can plan their trip without any navigation assistance.
+• Reliability: The system is dependent on the OpenStreetMap (OSM) data for map analysis. In
+case there is a problem in the data provided by this external source for a region (e.g., the height
+of the buildings is not provided for a region), the system must not crash; rather, it must display
+a warning message for the user regarding the problem and must continue working in a "partially
+reliable" mode based on the data that is available (e.g., transportation data and land use data).
+In cases like the total weight exceeding 100% in the decision-making algorithm, the system
+must display error messages for the user rather than crashing.
+• Performance: The performance of the feasibility studies that might take months for urban
+planners and aviation companies to do manually can be improved by the system's design as a
+"Geographic Decision Support System." The performance of the spatial queries executed by
+PostgreSQL/PostGIS and the Multi-Criteria Decision Making (MCDM) algorithm in the
+Python backend should be able to perform the required calculations and create a heat map for
+a standard-sized district or neighbourhood selected by the user in a matter of minutes. The
+focus here is the efficient execution of complex geographic queries by PostGIS rather than the
+results being returned in milliseconds. The performance in terms of panning and zooming the
+map should be smooth and should not cause the user to experience lag.
+• Supportability: The parameters of the Multi-Criteria Decision Making (MCDM) algorithm
+used in this project (e.g., proximity to the metro = 40%, noise sensitivity = 30%) should not be
+hardcoded into the code. This is because this is an academic and experimental project, and
+these parameters should be easily changed in the background depending on various scenarios
+of Urban Air Mobility (UAM).
+• Implementation: The project must be developed according to a strict three-tier software
+architecture. Instead of standard relational databases, PostgreSQL/PostGIS, capable of
+processing spatial data, will be used in the database layer. The backend will be written in
+Python, and the frontend in React.js. As per course guidelines, ready-made web templates will
+not be used for frontend development; custom components will be coded.
+• Interface : The system must integrate with external web services to programmatically collect
+and visualize data. The backend will establish API integration with OpenStreetMap services
+Page 16 of 44
+(e.g., OSMnx) to pull real-world geographic data. The frontend will use the Mapbox Web
+Services API to process and visualize the generated geographic results (GeoJSON, etc.). The
+system will not open a commercial API to the outside world but will heavily utilize external
+data providers. Management of expert and passenger profiles will be provided through a secure
+login (Authentication) service.
+• Packaging: The final packaging and delivery of the project should be at the end of the
+semester. The project is a type of academic research prototype (Proof of Concept), and the final
+product should be a fully functional web simulator that can be executed in a standard web
+browser and a local or cloud-based server. The source code for the product should be submitted
+in its entirety to the academic evaluation committee.
+• Legal : The source of all the raw geographic data used in the project will be OpenStreetMap.
+Hence, the system must follow the Open Database License requirements of OpenStreetMap.
+Legal attributions that indicate that the data used by the application is owned by
+OpenStreetMap and Mapbox must be clearly indicated on the user interface (the map).
+• Other Constraints (Social, Ethical, Environmental and Business Impacts):
+o Sustainability: The algorithm for the project will be designed based on the United
+Nations' Sustainable Development Goals (Goal 9-Infrastructure, Goal 11-Sustainable
+Cities). Due to ethical and health considerations, the algorithm must consider the noise
+pollution that flying taxis (eVTOL) generate. Land usage must be considered by the
+algorithm, which must heavily penalize (i.e., assign a low score) the construction of a
+Vertiport on residential areas like houses, hospitals, and schools, while rewarding those
+on highways or business premises.
+o Business and Employment Impact: The goal of SkyPort is not to eliminate human
+jobs by automating existing manual processes for feasibility analysis but to provide an
+up-to-date Decision Support Tool for urban planners and aviation experts to take better
+decisions. The technology also enables the creation of new fields of expertise for the
+UAM industry, such as Data-Driven Aviation Planning.
+3.4. System Models
+This section contains the analysis models of the SkyPort system. The functional structure of the
+system is visualized with use case diagrams, the data and class structure with object models, and the
+interaction between components with dynamic models. Additionally, mock-ups showing end-user
+interaction are presented.
+Page 17 of 44
+3.4.1. Use Case Model
+Figure 1
+Page 18 of 44
+3.4.2. Object Model
+Figure 2
+3.4.3. Dynamic Model
+Figure 3: Scenario 1
+Page 19 of 44
+Figure 4: Scenario 2
+Figure 5: Scenario 3
+Page 20 of 44
+Figure 6: Scenario 4
+Figure 7: Scenario 5
+Page 21 of 44
+Figure 8: Scenario 6
+Figure 9: Scenario 7
+Page 22 of 44
+Figure 10: Scenario 8
+Figure 11: Scenario 9
+Page 23 of 44
+Figure 12: Scenario 10
+Figure 13: Scenario 11
+Page 24 of 44
+Figure 14: Scenario 12
+3.4.4. User Interface—Navigational Paths and Screen Mock-ups
+Figure 15
+Page 25 of 44
+Figure 16
+Figure 17
+Page 26 of 44
+Figure 18
+Figure 19
+Page 27 of 44
+Figure 20
+Figure 21
+Page 28 of 44
+Figure 22
+Figure 23
+Page 29 of 44
+Figure 24
+Figure 25
+Page 30 of 44
+Figure 26
+Figure 27
+Page 31 of 44
+Figure 28
+Figure 29
+Page 32 of 44
+Figure 30
+Figure 31
+Page 33 of 44
+Figure 32
+Figure 33
+Page 34 of 44
+Figure 34
+Figure 35
+Page 35 of 44
+Figure 36
+Figure 37
+Page 36 of 44
+Figure 38
+Figure 39
+Page 37 of 44
+4. Other Analysis Elements
+This section includes some other analyses concerning the development process of the SkyPort
+project. Risks that may occur during the project, as well as alternative solutions for these cases, are
+discussed. Moreover, the project's development plan and basic stages are briefly presented.
+4.1 Risks and Alternatives
+This section concerns the potential risks that may occur during the development process of the
+SkyPort project. More specifically, for each risk, the probability of the risk, the impact of the risk,
+and the alternative plan for the project, in case the risk occurs, are presented as follows:
+Table 13
+Risks Likelihoo
+d
+Effect on the project B Plan Summary
+Data Source
+Limitations: Inability to
+access data in the level of
+detail required (e.g.,
+building heights) through
+OSM or open data
+sources.
+Medium
+The accuracy and
+coverage of the
+decision-making
+mechanism decrease
+Default average values are
+given to the missing layers. The
+user is alerted to "missing data."
+The analysis process proceeds
+with partial reliability.
+Alternatively, Overture Maps
+API can be taken into account.
+Complexity:
+AHP/TOPSIS
+mathematical models run
+slowly when processing
+thousands of H3 cells
+(large datasets).
+Low
+System response time
+is increased, along
+with user interface
+freezes (timeouts).
+The H3 hexagonal grid
+resolution level used by the
+algorithm is reduced, or the
+massive analysis areas are
+divided into smaller
+"neighbourhood" based
+segments and processed
+asynchronously.
+3D Visualization
+Challenges: Browser
+(client) based
+performance problems in
+the simultaneous
+rendering of building
+heights and routes in
+Mapbox GL JS.
+Medium The quality of the
+project is reduced.
+The 3D layer is disabled, and
+the 2D heat map is prioritized.
+Scope Creep: Delays in
+the development
+schedule due to the
+addition of features that
+were not part of the
+initial plan, like real-time
+flight tracking, weather,
+and payment gateways.
+High
+Project delivery
+deadlines may be
+delayed.
+Other features include backlog,
+which means the scope of the
+current sprint is frozen, and
+prioritizing core functionality.
+PostGIS/Database
+Performance: Query
+performance for large
+region queries becoming
+too slow.
+Medium
+Analysis/data retrieval
+time will be extended,
+and there will be a
+bottleneck risk.
+Frequently used queries are
+cached; the maximum zone size
+for the analysis space is limited
+if necessary.
+Page 38 of 44
+Export Errors: Errors
+that occur in converting
+complex map and
+analysis reports to PDF
+and GeoJSON formats.
+Low
+The reporting
+capabilities of B2B
+expert users will be
+limited.
+A server-side reporting engine
+is used instead of browser-based
+libraries, or simplified text
+reports are provided.
+Session and Data
+Security: Problems with
+database synchronization
+of passenger (B2C)
+favourites or expert
+(B2B) analysis records.
+Low User data loss will
+occur, and reliability
+will be impaired.
+Standard and reliable
+authentication libraries
+(Firebase Auth, etc.) are used.
+Automatic backup scenarios are
+implemented to prevent data
+loss.
+4.2 Project Plan
+This section covers the development schedule and management strategy for the SkyPort project
+between February 2026 and June 2026. It is based on the technical requirements and key milestones
+identified during the project analysis phase.
+Table 14: List of Work Packages
+WP# Work package title Members involved
+WP1 Requirements Elicitation and Analysis Processes Yağmur Başoğlu,
+Nehir Karameşe
+WP2 High-Level System Design & Database Modelling Nehir Karameşe,
+Yağmur Başoğlu
+WP3 Spatial Database Setup (PostGIS) and Data
+Extraction (OSMnx)
+Yağmur Başoğlu
+WP4 Frontend Framework Setup & Mapbox Base Layers Nehir Karameşe
+WP5 MCDM Algorithm Implementation & Python
+Backend Logic(Auth & Export)
+Yağmur Başoğlu
+WP6 Heatmap Visualization & B2B/B2C UI
+Components
+Nehir Karameşe
+WP7 API Integration, System Testing & Documentation Yağmur Başoğlu,
+Nehir Karameşe
+Table 15: Work Package 1
+WP 1: Requirements Elicitation and Analysis Processes
+Start date: 02.03.2026 End date: 13.03.2026
+Leader: Nehir Karameşe Members involved: Yağmur Başoğlu
+Objectives: Before technical implementation of the project begins, the following steps are taken
+researching the existing literature, analysing aviation and urban planning standards, analysing
+Page 39 of 44
+B2B/B2C user needs, and documenting all functional and technical requirements of the system.
+Tasks:
+Task 1.1 Literature Review: Researching the latest standards from EASA (European Union
+Aviation Safety Agency) and other relevant entities regarding the selection of Vertiport location
+and obstacles.
+Task 1.2 Technical Analysis and Data Source Research : Analysing the technical capabilities
+of the OpenStreetMap (OSM) data structure and the OSMnx library for Istanbul's 3D building
+data and transportation networks.
+Task 1.3 Requirements Definition (Functional & NFR): Detailed research regarding the
+functions that the system should fulfil.
+Task 1.4 Analysis Documentation : Combining the research with the technical analysis and
+creating the Proposal and Requirements Analysis Document (RAD/RDD).
+Deliverables
+D1.1: Requirements Analysis Document (RAD/RDD)
+Table 16: Work Package 2
+WP 2: High-Level System Design & Database Modelling
+Start date: 16.03.2026 End date: 27.03.2026
+Leader: Yağmur Başoğlu Members involved: Nehir Karameşe
+Objectives: To design the high-level software architecture of the SkyPort system, design the
+PostGIS database schema used to store the spatial data (3D buildings, transportation networks,
+etc.), design the database schema (ERD) used to store the user profiles (B2B/B2C) and their
+favourites along with the spatial data, and define the interaction between the different
+components of the SkyPort system.
+Tasks:
+Task 2.1 System Architecture Design: Designing the 3-tier architecture with the React UI,
+Python-based backend with the choice of Flask or FastAPI, and the PostGIS database.
+Task 2.2 Database Modelling (ERD): Designing the database schema that includes the spatial
+data.
+Task 2.3 User Flow Creation: Designing the B2B and B2C interface flow design (wireframes).
+Task 2.3 Design Documentation: Documenting the design decisions and the architecture of the
+SkyPort system as a System Design Document (SDD).
+Deliverables
+D2.1: System Design Document (SDD)
+Table 17: Work Package 3
+WP 3: Spatial Database Setup (PostGIS) and Data Extraction (OSMnx)
+Start date: 01.04.2026 End date: 30.04.2026
+Leader: Yağmur Başoğlu Members involved:
+Objectives: The objectives of the task are to configure the spatial extension of the PostgreSQL
+database using the PostGIS extension and develop Python/OSMnx scripts for extracting the
+building height, transportation networks, and land use information for the Istanbul region using
+the Open Street Map (OSM) data source.
+Page 40 of 44
+Tasks:
+Task 3.1 Database Installation: The task is about installing the PostgreSQL database and the
+PostGIS spatial extension, as well as the configuration of the spatial indexing settings (GIST).
+Task 3.2 Data Extraction Scripts: The task is about developing the Python/OSMnx scripts for
+extracting the building, road, and obstacle information for the Istanbul region.
+Task 3.3 Data Cleaning and Transfer: Cleaning the extracted raw data, performing coordinate
+system transformations, indexing to an H3 hexagonal grid structure, and transferring it to the
+database.
+Task 3.4 Data Validation: Validating the quality of the extracted data in the database and the
+completeness of the attributes of the data, particularly the height attribute.
+Deliverables
+D3.1: Structured and Data-Polluted Spatial Database.
+D3.2: Automatic Data Retrieval and Processing Module (Python Scripts).
+Table 18: Work Package 4
+WP 4: Frontend Framework Setup & Mapbox Base Layers
+Start date: 01.04.2026 End date: 30.04.2026
+Leader: Nehir Karameşe Members involved:
+Objectives: The goal is to build the React.js framework, integrate the Mapbox GLJS map
+engine into the system, and create a basic map interface (base maps, navigation tools) for users
+to perform analysis.
+Tasks:
+Task 4.1 Frontend Setup: Creating the React.js project framework and configuring the
+necessary libraries (Mapbox, Axios, MUI, etc.).
+Task 4.2 Mapbox Integration: Defining the map API keys in the system and loading the base
+layer focused on Istanbul.
+Task 4.3 UI Component Design: Developing basic user interface controls such as zooming in,
+zooming out, and displaying coordinates on the map.
+Task 4.4 Area Selection Tools: Integrating the rectangular selection tool (Bounding Box) that
+will allow the user to define the analysis area on the map.
+Deliverables
+D4.1: Working Web Interface Framework.
+D4.2: Integrated Mapbox Map Module and Selection Tools.
+Table 19: Work Package 5
+WP 5: MCDM Algorithm Implementation & Python Backend Logic (Auth & Export)
+Start date: 04.05.2026 End date: 22.05.2026
+Leader: Yağmur Başoğlu Members involved:
+Objectives: Code the Multi-Criteria Decision Making Algorithm develop a backend service
+using a Python backend to process criterion weights according to a normalization procedure,
+develop a simulation engine to compute fitness scores for all hexagonal cells in a hexagonal grid
+system, develop user sessions management (Auth), and develop an export function to export
+Page 41 of 44
+results from analysis in a report format.
+Tasks:
+Task 5.1 Backend API Development : Setup a backend server using a Python backend server
+and define API endpoints that will interact with the frontend.
+Task 5.2 MCDM Algorithm Engine: Code the mathematical models for AHP (Analytic
+Hierarchy Process) and TOPSIS using a Python backend server to validate the models.
+Task 5.3 Database Integration: Code a database query layer to fetch geographic data required
+by the algorithm from a PostGIS database.
+Task 5.4 Scoring and GeoJSON Output: Developing the query layer that will retrieve the
+geographic data required by the algorithm from the PostGIS database.
+Task 5.5 Session management: Coding a module to manage user sessions (login and logout)
+and user profile management.
+Task 5.6 Export Output: Developing the report generation engine (GeoJSON/PDF Export).
+Deliverables
+D5.1: MCDM Algorithm Module (Python)
+D5.2: Running Backend Simulation Service
+Table 20: Work Package 6
+WP 6: Heatmap Visualization & B2B/B2C UI Components
+Start date: 04.05.2026 End date: 22.05.2026
+Leader: Nehir Karameşe Members involved:
+Objectives: Display the results obtained from the analysis by the MCDM algorithm on the map
+as a dynamic heatmap on Mapbox, to add a set of control panels to allow the user to change the
+weights of the criteria, and to implement the cell detail review screen and filtering/favourite
+management for passengers.
+Tasks:
+Task 6.1 Heatmap Visualization : Adding calculated H3 score data in GeoJSON format to the
+map as color-coded (legend-based) layers using Mapbox GL JS.
+Task 6.2 Dynamic Control Panel: Developing "Slider" components by using React that allow
+the user to adjust criterion weights in real-time.
+Task 6.3 Detail Analysis Panel: Coding a side panel that opens when a cell is clicked and
+showing the score breakdowns (obstacles, transportation, etc.) of that location.
+Task 6.4 Comparison Module: Developing interface components that allow side-by-side
+comparison of multiple candidate locations.
+Task 6.5 Passenger Interface Panel: Implementation of passenger interface (B2C) filtering tools
+and favourite location management panel.
+Deliverables
+D6.1: Interactive Heat Map Layer
+D6.2: User Control and Analysis Panel
+Page 42 of 44
+Table 21: Work Package 7
+WP 7: API Integration, System Testing & Documentation
+Start date: 25.05.2026 End date: 12.06.2026
+Leader: Yağmur Başoğlu Members involved: Nehir Karameşe
+Objectives: To fully integrate the frontend and backend parts of the application with the API,
+conduct comprehensive testing of the application's reliability, and prepare the final thesis
+document for the project.
+Tasks:
+Task 7.1 System Integration: Ensuring communication between the React interface and Python
+backend services via REST API and optimizing data flow.
+Task 7.2 Tests : Performing unit and integration tests to debug and test software errors.
+Task 7.3 Final Documentation and Thesis Writing: Preparing and submitting the final
+Bachelor Thesis document by combining all development processes, architectural decisions, and
+test results.
+Deliverables
+D7.1: Fully Integrated and Tested SkyPort GDSS Software.
+D7.2: Final Bachelor Thesis & Poster Submission.
+5. Glossary
+Table 22: Glossary
+AHP / TOPSIS These are the mathematical techniques used by the algorithms
+of the Multi-Criteria Decision Making.
+API (Application Programming
+Interface)
+An interface that allows the interaction of two or more software.
+B2B (Business-to-Business) The part of the platform that deals with the analysis and management, specifically designed for experts (city planners, investors).
+B2C (Business-to-Consumer) The part of the platform that deals with the analysis and management specifically designed for the end-user (passenger).
+Bounding Box Rectangular boundaries defined by coordinates of the area to
+be analysed or from which the data is going to be extracted on
+the map.
+eVTOL (Electric Vertical Takeoff and Landing)
+Next-generation electric-powered aircraft capable of vertical
+take-off and landing like helicopters (Flying taxis).
+Export ( Downloading the analysis results and the map data that is
+generated within the system to the user's device.
+GeoJSON An open standard JSON data format used to encode geographic data structures.
+GIS (Geographic Information
+System)
+An information system that allows the collection, storage,
+analysis, and visualization of geographic data.
+H3 / Hexagonal Grid A geographic indexing system that allows the analysis of an
+area by dividing it into hexagonal cells. It is used in SkyPort
+for cell-based scoring of data.
+Page 43 of 44
+Heatmap The method of showing data values on a map and using colours, where red means unsuitable and green means suitable.
+Mania In aviation, any physical object that could compromise the
+flight safety of an aircraft.
+Mapbox A map-based visualization platform and API that enables the
+development of web-based map-based applications.
+MCDM (Multi-Criteria
+Decision Making)
+Multi-Criteria Decision Making, where multiple possibly conflicting, criteria are mathematically evaluated in order to
+achieve an objective.
+OpenStreetMap (OSM) An open-source geographic database created by volunteers
+worldwide. It includes road networks, building data, and various spatial data.
+PostGIS Software installed as an add-on to an open-source PostgreSQL database that allows the storage of Geographic Information System (GIS) objects.
+Routing A safe and optimum flight path that is simulated between two
+points, considering geographic constraints such as obstacles
+and restricted flight zones.
+Urban Air Mobility(UAM) This includes the transportation of passengers and/or cargo by
+air in urban environments, and it is the main area of interest
+of the SkyPort project.
+Vertiport Specific stations designed for UAM, where eVTOLs drop off
+and pick up passengers and are recharged.
+6. References
+Following list of references are relevant to this document, and they outline the technical, academic,
+and regulatory sources utilized while initiating the SkyPort project idea, analysing, and modelling its
+requirements.
+1) Boeing, G. (2017). OSMnx: New methods for acquiring, constructing, analysing, and visualizing complex street networks. Computers, Environment and Urban Systems, 65, 126–139.
+https://doi.org/10.1016/j.compenvurbsys.2017.05.004
+2) Işık University. (2026). COMP/SOFT 4902/4912 Graduation Design Project Syllabus. Işık
+University.
+3) Lecture Notes, Işık University (2024). Software Engineering Course Material (SOFT2101).
+- Course notes provided by the instructor for understanding the RAD structure, system
+modelling and diagrams.
+4) Mapbox. (2026). Mapbox GL JS Documentation for Web Maps. Retrieved from:
+https://docs.mapbox.com/mapbox-gl-js/
+5) Boeing, G. (2023). OSMnx: Python for Street Networks. Python Package Index (PyPI). Retrieved from:
+https://pypi.org/project/osmnx/
+6) PostGIS Project Steering Committee. (2024). PostGIS Spatial Database Documentation. Retrieved from:
+https://postgis.net/docs/
+Page 44 of 44
+7) Uber Technologies. (2024). H3: Uber’s Hexagonal Hierarchical Spatial Index. Retrieved
+from:
+https://h3geo.org/
+8) United Nations. (2025). The Sustainable Development Goals Report 2025. Retrieved from:
+https://sdgs.un.org/goals

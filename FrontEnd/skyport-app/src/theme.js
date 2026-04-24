@@ -4,11 +4,11 @@ const theme = createTheme({
   palette: {
     mode: 'dark',
     background: {
-      default: '#0a0f1a',
-      paper: 'rgba(10, 18, 35, 0.92)',
+      default: '#020617',
+      paper: 'rgba(2, 6, 23, 0.92)',
     },
     primary: {
-      main: '#3b82f6',
+      main: '#b65f70',
       light: '#60a5fa',
       dark: '#2563eb',
     },
@@ -44,7 +44,7 @@ const theme = createTheme({
           borderRadius: 8,
           transition: 'all 0.2s ease',
           '&:hover': {
-            backgroundColor: 'rgba(59,130,246,0.12)',
+            backgroundColor: 'rgba(182,95,112,0.12)',
           },
         },
       },

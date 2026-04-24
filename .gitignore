@@ -195,4 +195,5 @@ psd
 thumb
 sketch
 
-# End of https://www.toptal.com/developers/gitignore/api/react,pythonskyport.db
+# End of https://www.toptal.com/developers/gitignore/api/react,python
+skyport.db

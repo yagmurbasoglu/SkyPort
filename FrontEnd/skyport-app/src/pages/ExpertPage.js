@@ -11,7 +11,7 @@ import axios from 'axios';
 import ExpertAnalysisPage from '../components/expert/ExpertAnalysisPage';
 
 const glassCard = {
-  background: 'rgba(10, 18, 35, 0.92)',
+  background: 'rgba(2, 6, 23, 0.92)',
   backdropFilter: 'blur(16px)',
   border: '1px solid rgba(255,255,255,0.08)',
   borderRadius: '20px',
@@ -26,7 +26,7 @@ const inputSx = {
     color: '#e2e8f0',
     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+    '&.Mui-focused fieldset': { borderColor: '#b65f70' },
   },
   '& .MuiInputLabel-root': { color: '#64748b' },
 };
@@ -102,11 +102,11 @@ const ExpertPage = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', background: '#0a0f1a', p: 4 }}>
+    <Box sx={{ minHeight: '100vh', background: '#020617', p: 4 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <AnalyticsIcon sx={{ fontSize: 40, color: '#3b82f6' }} />
+          <AnalyticsIcon sx={{ fontSize: 40, color: '#b65f70' }} />
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 800, color: '#e2e8f0' }}>Expert Analyst Dashboard</Typography>
             <Typography variant="body2" sx={{ color: '#64748b' }}>Welcome, {user?.full_name || 'Analyst'}</Typography>
@@ -121,7 +121,7 @@ const ExpertPage = () => {
       <Tabs 
         value={tab} 
         onChange={(e, v) => setTab(v)} 
-        sx={{ mb: 4, '& .MuiTab-root': { color: '#64748b', fontWeight: 700 }, '& .Mui-selected': { color: '#3b82f6' } }}
+        sx={{ mb: 4, '& .MuiTab-root': { color: '#64748b', fontWeight: 700 }, '& .Mui-selected': { color: '#b65f70' } }}
       >
         <Tab icon={<MapIcon />} iconPosition="start" label="Geodata Extraction" />
         <Tab icon={<AnalyticsIcon />} iconPosition="start" label="MCDM Analysis" />
@@ -139,7 +139,7 @@ const ExpertPage = () => {
                 <Grid item xs={6}><TextField fullWidth label="Max Latitude" sx={inputSx} type="number" value={bbox.max_lat} onChange={(e)=>setBbox({...bbox, max_lat: e.target.value})} /></Grid>
                 <Grid item xs={6}><TextField fullWidth label="Max Longitude" sx={inputSx} type="number" value={bbox.max_lon} onChange={(e)=>setBbox({...bbox, max_lon: e.target.value})} /></Grid>
               </Grid>
-              <Button fullWidth variant="contained" onClick={handleFetchOSM} disabled={geoLoading} sx={{ mt: 3, background: '#3b82f6', py: 1.5 }}>
+              <Button fullWidth variant="contained" onClick={handleFetchOSM} disabled={geoLoading} sx={{ mt: 3, background: '#b65f70', py: 1.5 }}>
                 {geoLoading ? <CircularProgress size={24} color="inherit" /> : 'Fetch Infrastructure from OSM'}
               </Button>
               
@@ -152,7 +152,7 @@ const ExpertPage = () => {
                 <Grid item xs={6}><TextField fullWidth label="Resolution" sx={inputSx} type="number" value={gridConfig.resolution} onChange={(e)=>setGridConfig({...gridConfig, resolution: e.target.value})} /></Grid>
                 <Grid item xs={6}><TextField fullWidth label="Radius (km)" sx={inputSx} type="number" value={gridConfig.radius_km} onChange={(e)=>setGridConfig({...gridConfig, radius_km: e.target.value})} /></Grid>
               </Grid>
-              <Button fullWidth variant="outlined" onClick={handleGenerateGrid} disabled={geoLoading} sx={{ mt: 3, color: '#3b82f6', borderColor: '#3b82f6', py: 1.5 }}>
+              <Button fullWidth variant="outlined" onClick={handleGenerateGrid} disabled={geoLoading} sx={{ mt: 3, color: '#b65f70', borderColor: '#b65f70', py: 1.5 }}>
                  Generate Cell Grid
               </Button>
             </Paper>
@@ -162,7 +162,7 @@ const ExpertPage = () => {
             <Paper sx={{ ...glassCard, height: '100%', minHeight: 400 }}>
               <Typography variant="h6" sx={{ color: '#e2e8f0', mb: 2 }}>API Output Log</Typography>
               <Box sx={{ 
-                background: '#04070d', p: 2, borderRadius: 2, height: '80%', 
+                background: '#010410', p: 2, borderRadius: 2, height: '80%', 
                 overflowY: 'auto', border: '1px solid #1e293b' 
               }}>
                 <pre style={{ color: '#10b981', margin: 0, fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
@@ -180,7 +180,7 @@ const ExpertPage = () => {
           <Grid item xs={12} md={6}>
             <Paper sx={glassCard}>
               <Typography variant="h6" sx={{ color: '#e2e8f0', mb: 2 }}>Vertiport Placement MCDM</Typography>
-              <Alert severity="info" sx={{ mb: 3, background: 'rgba(59,130,246,0.1)', color: '#93c5fd' }}>
+              <Alert severity="info" sx={{ mb: 3, background: 'rgba(182,95,112,0.1)', color: '#93c5fd' }}>
                 Total weights must equal exactly 1.0 (or 100).
               </Alert>
               <TextField fullWidth label="Region ID" sx={{...inputSx, mb: 3}} value={analysisConfig.region_id} onChange={(e)=>setAnalysisConfig({...analysisConfig, region_id: e.target.value})} />
@@ -202,10 +202,10 @@ const ExpertPage = () => {
             <Paper sx={{ ...glassCard, height: '100%', minHeight: 400 }}>
               <Typography variant="h6" sx={{ color: '#e2e8f0', mb: 2 }}>Analysis Payload JSON</Typography>
               <Box sx={{ 
-                background: '#04070d', p: 2, borderRadius: 2, height: '80%', 
+                background: '#010410', p: 2, borderRadius: 2, height: '80%', 
                 overflowY: 'auto', border: '1px solid #1e293b' 
               }}>
-                <pre style={{ color: '#3b82f6', margin: 0, fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
+                <pre style={{ color: '#b65f70', margin: 0, fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
                   {analysisResult || '// Results will appear here'}
                 </pre>
               </Box>

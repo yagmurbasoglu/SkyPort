@@ -1,0 +1,676 @@
+1
+COMP/SOFT 4902/4912
+Graduation Design Project
+Project Title
+SkyPort: Geographic Simulation for Urban Air Mobility
+Yağmur BAŞOĞLU / 21COMP1016, Nehir KARAMEŞE / 22COMP1041
+SYSTEM DESIGN DOCUMENT
+SYSTEM DESIGN DOCUMENT
+The System Design Document (SDD) is written after the initial system decomposition is
+done and updated throughout the development. SDD describes the services provided by each
+subsystem. The services of subsystems serve as a reference for teams to clearly identify the
+boundaries between their subsystems and enables them to develop subsystems in parallel.
+SDD is used to define interfaces between teams of developers and serve as a reference when
+architecture-level decisions need to be revisited. The audience for the SDD includes the project
+management, the system architects (i.e., the developers who participate in the system design),
+and the developers who design and implement each subsystem.
+1. Introduction
+This System Design Document (SDD) provides the architectural blueprint of the SkyPort
+project, a Bidirectional Geographic Decision Support System (GDSS), designed for the Urban
+Air Transportation (UAM) in Istanbul. This document is a continuation of the SkyPort
+Requirements Analysis Document (RAD) which provides a concrete structural framework of
+the previously defined functional scenarios.
+The proposed software architecture follows a modern and robust three-tier structure. For data
+management, PostgreSQL with the PostGIS plugin is used to efficiently support complex
+queries and H3 Hexagonal Grid data structures. The backend, which is responsible for the
+application logic layer, is implemented using Python to efficiently execute complex MultiCriteria Decision-Making algorithms and pathfinding functions. For the presentation layer or
+frontend, the proposed solution is based on React.js with the addition of Mapbox GL JS for an
+interactive and dual-actor interface for B2B Experts and B2C Passengers.
+As stated in the RAD document, the fundamental design goals shaping this architecture are
+directly derived from the system's non-functional requirements. This architecture is designed
+to achieve high performance in handling massive spatial data sets, e.g., area analysis, which
+would take months to perform manually, is performed in minutes. This architecture also
+2
+prioritizes usability through the generation of complex geographic data outputs into easily
+understandable and intuitive color-coded interactive heat maps.
+Additionally, the design prioritizes reliability through asynchronous data retrieval from
+external APIs (such as OpenStreetMap) and implementation and supportability by allowing
+expert users to dynamically adjust MCDM weights and avoiding hard-coding algorithmic
+parameters.
+The goals of the interface and the packaging are achieved through the secure authentication
+of the user, the integration of external APIs for the purpose of mapping (OSMnx, Mapbox), and
+the display of the system as a fully functional "Proof of Concept" (PoC) web simulator. Lastly,
+the design of the architecture strictly adheres to the constraints of the environmental and social
+impacts; it works in harmony with the social, ethical, and environmental impacts through the
+natural consideration of noise sensitivity and land-use restrictions.
+1.1. Purpose of the System
+The primary goal of the SkyPort system is to digitize, automate, and optimize the site
+selection process for Urban Air Mobility (UAM) infrastructure in Istanbul through a web-based
+Geographic Decision Support System (GDSS). SkyPort is different from traditional and errorprone manual feasibility analyses in the sense that it can process complex open-source spatial
+data such as building obstacles, transportation networks, and noise-sensitive areas using a
+dynamic Multi-Criteria Decision-Making algorithm and instantly compute "Vertiport
+Suitability Scores" and display them as an interactive heat map.
+Moreover, the system will have a dual function, which is to act as a bidirectional
+platform. Firstly, the platform will offer aviation experts, investors and urban planners powerful
+analytical tools to confirm and establish a safe vertiport network (B2B). Secondly, the platform
+will incorporate an end-user portal (B2C) that will allow passengers to access the validated
+vertiport network, filter the locations according to their individual needs, and simulate safe
+flight routes. In the end, the SkyPort platform will bridge the gap between the complex
+infrastructure planning and the passenger experience in the emerging air taxi industry.
+1.2. Design Goals
+The targeted non-functional requirements (quality attributes) specified in the Requirements
+Analysis Document (RAD) form the core design goals of the SkyPort system. The high-level
+software architecture is specifically configured to meet these goals through specific
+technological and architectural decisions:
+Performance: In order to carry out complex spatial operations within minutes rather than
+months, the architecture offloads complex computations from the client side. At the data layer,
+PostGIS-enabled PostgreSQL is employed to handle spatial data indexing via GiST indexes.
+This significantly improves query times for geographic data. The Python backend utilizes
+MCDM algorithms via Uber H3 Hexagonal Grid to mathematize geographic data like city
+maps. Mapbox GL JS utilizes WebGL to handle thousands of heat map polygons on the client
+side without freezing or lag while interacting with the map.
+Reliability: The system can handle failures of data sources like API outages. The Data
+Extraction Service uses a robust exception handling system. In case a particular layer of data,
+3
+like building heights, cannot be extracted from OSM due to API outages, the system does not
+crash. Instead, it runs the MCDM algorithm with available data like transportation networks
+and sends a 'partial success' signal to the React frontend. A warning box will also be sent to the
+end-user.
+Usability: In order to present highly complex geographic data in a manner that is easily
+understandable to the user, the presentation layer utilizes a customized version of the React.js
+dual architecture (B2B + B2C). For experts, the results of the analysis are shown as intuitive
+interactive heat maps with colour coding. Moreover, the state management of the frontend is
+such that when the user clicks on any H3 cell, the API is called to retrieve the math behind the
+suitability score calculation, which is then shown to the user in a clear manner without
+overwhelming the user with information.
+Supportability and Implementation: To meet the requirement that algorithmic parameters
+not be hardcoded, the system uses a modular, standalone API architecture. The Criteria
+Dashboard (Frontend) of the system enables expert users to dynamically set the weights of
+different criteria such as noise, obstacles, etc. These changes are sent to the MCDM Engine
+(Backend) as JSON data, allowing the matrices to be recalculated instantly to adapt the system
+to different scenarios without changing the source code.
+Social, Ethical, and Legal Constraints: The architecture itself naturally includes the United
+Nations Sustainable Development Goals into the computational logic. The PostGIS database
+queries the land use types spatially, which allows the backend algorithm to use mathematical
+penalties (low scores) for noise-sensitive areas (hospitals, homes) and rewards (high scores) for
+commercial/highway areas. Additionally, to comply with the Open Database License, there are
+mandatory attribution components included in the frontend architecture.
+1.3. Definitions, Acronyms, and Abbreviations
+AHP (Analytical Hierarchy Process): A formalized mathematical method used by the
+MCDM engine to facilitate the analysis of complex decisions by calculating the hierarchical
+weights of various criteria.
+API (Application Programming Interface): A set of protocols and tools that allows
+different software subsystems (for example, React front-end and Python back-end) to
+communicate with one another.
+B2B (Business-to-Business): SkyPort platform's specialized module designed specifically
+for urban planners and aviation investors.
+B2C (Business-to-Consumer): SkyPort platform's consumer module designed specifically
+for passengers, offering features including vertiport filtering, safe route simulation, and
+favourites management.
+eVTOL (Electric Vertical Take-Off and Landing): Future generation of aircraft, powered
+by electric motors, capable of vertical take-off/landing, and serving as primary aircraft in the
+UAM space.
+4
+GDSS (Geographic Decision Support System): An interactive computer-based tool that
+assists decision-makers in solving complex problems by employing geographic data and/or
+algorithms (for example, vertiport location analysis).
+GeoJSON: An open standard format designed to represent simple geographic features along
+with non-spatial attributes, used to transfer map data between the backend and Mapbox.
+H3 / Hexagonal Grid: A spatial indexing system developed by Uber that divides the world
+into hexagonal cells and is used in this project for discrete mathematical scoring of urban areas.
+Mapbox GL JS: JavaScript library that is the primary visualization engine for the
+presentation layer, utilizing WebGL to develop interactive maps based on vector tiles.
+MCDM (Multi-Criteria Decision Making): Algorithmic structures used to evaluate
+multiple conflicting criteria (such as noise pollution, transportation, and obstacles) to determine
+the most optimal decision alternative.
+OSM (OpenStreetMap): A collaborative, open-source geographic database that provides
+the raw spatial data (road networks, building heights, land use) required for the system's
+analyses.
+OSMnx: A Python library utilized for downloading, modelling, analysing, and visualizing
+street networks as well as other spatial data directly from OpenStreetMap.
+PostGIS: An open-source software plugin developed for PostgreSQL, allowing geographic
+objects to be integrated into the object-relational database.
+TOPSIS (Preference Ranking Technique Based on Similarity to Ideal Solution): A
+multi-criteria analysis method utilized in combination with AHP for ranking the suitability of
+hexagonal cells based on distance from ideal parameters.
+UAM (Urban Air Mobility): A relatively new concept of transportation utilizing highly
+automated aircraft for the transport of passengers or cargo at low altitudes.
+Vertiport: The physical locations or infrastructures where operational activities of eVTOLS
+take place, including take off, landing, charging, as well as the transfer of passengers.
+RBAC (Role-Based Access Control): A security model in which access permissions are
+assigned to predefined roles rather than individual users.
+2. Current Software Architecture
+Currently, there is no standardized, integrated software architecture or Geographic Decision
+Support System (GDSS) specifically designed for Urban Air Mobility (UAM) and vertiport
+siting in Istanbul. As there is no integrated system to replace it, the existing solution is totally
+based on a fragmented, manual, and ad-hoc workflow by urban planners, aviation companies,
+5
+and analysts. The architecture of the existing ad-hoc solution is based on fragmented desktop
+tools and manual data silos.
+• Data Collection (Manual Silos): In the current scenario, the analyst is required to
+manually gather building models, transportation infrastructure, and zoning details from
+various organizations (municipalities, civil aviation authorities, etc.).
+• Spatial Processing (Desktop GIS): Spatial analyses are typically performed using
+heavy, offline desktop Geographic Information Systems (GIS) such as ArcGIS or QGIS.
+These tools lack built-in and dynamic Multi-Criteria Decision Making (MCDM)
+engines specific to UAM.
+• Algorithms and Calculations (Spreadsheets): The mathematical evaluation of the
+location (AHP/TOPSIS calculations based on noise, cost, and obstacles) is conducted
+separately using external spreadsheet tools like MS Excel. This leads to a higher
+likelihood of human error. Recalculations of the algorithm take a very long time.
+• Lack of B2C Integration: From an end-user perspective, there is no digital architecture
+connecting passengers to a validated vertiport network. Standard navigation
+applications (such as Google Maps) are used for general routing but lack the ability to
+filter UAM stations or simulate safe flight paths.
+In conclusion, the present system is not a unified software architecture, but a set of
+disconnected manual processes. This leads to the feasibility study taking months to complete,
+the absence of real-time dynamic visualization (heat maps), and the complete dissociation of
+the passenger from the planning process.
+3. Proposed Software Architecture
+This section documents the high-level architectural models, subsystems, and structural
+layers of the proposed SkyPort system.
+6
+3.1. Overview
+Figure 1. Package Diagram
+Presentation Layer
+The Presentation Layer is the layer that provides interaction between the user and the system.
+It includes user interfaces and transmits input from the user to the Business Layer. This layer is
+also responsible for the visualization of the processed information for the user.
+User Interface
+Provides interaction between the user and the system.
+o Map UI: This is the main visualization component responsible for the creation
+(rendering) of the heat maps, H3 cells, and flight routes using Mapbox.
+o Expert Dashboard (B2B): This is the user interface designed for use by the expert,
+specifically for city planners to modify the MCDM weights and perform feasibility
+simulation.
+o Passenger Portal (B2C): An interface designed for end-users (passengers) to filter
+vertiports and simulate flight routes. Presentation Logic.
+Presentation Logic
+This is responsible for the data processing and routing functions for the user interface. This
+includes the transmission of the user's request to the Business Layer.
+7
+Business Layer
+This layer contains the business logic of the system. Here, all the processes of business
+analysis, decision-making, route calculation, and vertiport management are performed. It also
+contains the coordination between all the modules of the system through the Application
+Facade.
+Application Facade / Coordination
+It provides coordination between all business modules in the system. It offers a more
+organized and manageable architecture by reducing direct dependency between modules.
+User Management
+This layer manages B2B and B2C users.
+o Authentication: Manages user login processes.
+o Registration: Manages user registrations.
+o Profile Management: Manages user profiles.
+Analysis Management
+This layer coordinates basic GDSS algorithms. It also performs vertiport suitability analyses.
+o Region Selection: This module is responsible for the selection of regions for
+suitability analysis.
+o MCDM & Heatmap: Calculates suitability scores with multi-criteria decisionmaking algorithms.
+o Candidate Comparison: Compares alternative locations.
+Geospatial Data Management
+It processes spatial data.
+o Data Extraction (OSM): Data is extracted from OpenStreetMap.
+o H3 Indexing: Geographic areas are divided into Uber hexagonal cells.
+o Spatial Queries: Spatial queries are performed.
+Routing Module
+It generates flight routes. Calculates flight simulations.
+o Pathfinding: Calculates the most suitable route.
+o Safety Check: Performs obstacle and safety checks. Avoids building obstacles and
+no-fly zones.
+o Weather Evaluation: Evaluates the impact of weather conditions on the route.
+Vertiport Management
+Displays the vertiport network to the user. It manages approved vertiport infrastructure
+networks.
+8
+o Active Network View: Active vertiports are displayed.
+o Selection & Filtering: Vertiports are filtered according to user preference.
+o Favourites Management: Manages favourite locations.
+Report Management
+Manages analysis results, B2B outputs and data persistence.
+o Save Analysis: Analysis results are saved.
+o Export Report: Reports are exported.
+Data Layer
+This layer is responsible for the management and storage of all data used in the system. It
+contains databases and data access mechanisms. It controls the flow of data between the
+Business Layer and the data sources.
+Data Access
+Manages database activities, which serve as a bridge between the Business Layer and the
+Data Layer. It is responsible for the secure and persistent storage of geographic, analytical, and
+relational data.
+o Spatial Database (PostGIS): Stores geographic data, building models, and H3
+hexagonal structures using GiST indexing and is used for spatial operations.
+o User Database: Holds encrypted user profiles, roles, and authentication metadata.
+o Analysis & Results Database: Stores the outputs of MCDM simulations, calculated
+suitability scores, and historical report data.
+External Systems
+External Systems layer enables the system to receive data from external sources and integrate
+with external services. External services such as map data, geographic information, and weather
+are included in the system through this layer.
+o Mapbox API: Provides vector-based map visualization operations.
+o OSM API (OpenStreetMap): Used as a raw spatial data source for analysis.
+o Weather API: Provides real-time weather data for route safety.
+Cross-Cutting Concerns
+Cross-cutting concerns are a set of common functions that apply across all the layers of the
+system. This includes structures such as security, logging, monitoring, and communication,
+which are all included in this scope and ensure consistency and reliability throughout the
+system.
+o Security: Provides system-wide authentication, authorization (B2B/B2C roles), and
+data encryption processes.
+9
+o Operational Management: Monitors system activities, performs logging, and
+provides error tracking.
+o Communication: Manages data exchange and integration between system
+components.
+3.2. System Decomposition
+Figure 2. Component Diagram
+10
+3.3. Hardware/Software Mapping
+Figure 1. Deployment Diagram
+3.4. Persistent Data Management
+The SkyPort system is intended to address the complex infrastructural needs of the Urban
+Air Mobility (UAM) environment. The SkyPort system enables the seamless operation of
+analysis, route simulation, and vertiport functions by both B2B and B2C users. Hence, the
+SkyPort system requires a highly efficient and scalable data storage solution. In the SkyPort
+system, structurally diverse data such as user information, vast spatial data, mathematical
+results of analysis, favourite locations, and report information are stored. Hence, the SkyPort
+system requires a data management infrastructure to ensure the consistent and secure handling
+of traditional relational data as well as spatial data.
+PostgreSQL is used as a database infrastructure to implement the persistent data
+management requirement of the SkyPort system. The PostGIS plugin is utilized along with the
+PostgreSQL database to store and handle geographical and spatial information. This allows the
+SkyPort system to efficiently handle spatial information such as the locations of buildings,
+vertiport coordinates, no-fly zones (NFZs), Uber H3 hexagonal cells, and routes directly within
+the database. Hence, not only can traditional relational information such as text or numerical
+11
+information be stored within a unified framework of a data management infrastructure, but
+geometry-based information as well.
+The data stored in the system, which is not changed frequently, is divided into five main
+types: user data, vertiport data, spatial analysis data, route data, and report/favourite data.
+User data contains the identity and profile details of B2B and B2C users in the system. This
+data contains user name, surname, email, password (hash), user role, and user profile. The
+password is not stored in clear text, only stored hashed in the database. The user role is used for
+differentiating between an expert user and a passenger user, which is the basis for the access
+control method.
+Vertiport data contains all the data regarding vertiport points that are being shown in the
+system or are being considered as physical infrastructure due to the outcome of MCDM
+analysis. This data contains vertiport ID, name, coordinates (latitude, longitude, altitude),
+operational status (active, planned, under maintenance), noise level, and transportation links.
+Vertiports that are approved are marked as accessible for B2C users, and candidate vertiports
+are stored for evaluation in the analysis process.
+Spatial Analysis Data is one of the most important persistent data fields in the system,
+which makes up the system's decision support system (GDSS) feature. This type of data consists
+of Region of Interest polygons based on expert users, H3 hexagonal cell networks within these
+regions, suitability scores from AHP/TOPSIS algorithms for each cell, and criterion-based
+mathematical models for weighting (noise, obstacles, cost), among other data. Furthermore,
+building, land, and transportation infrastructure data from Open Street Map can also be stored
+or cached in the database for use in the analysis. This type of data ensures that when the system
+needs to perform additional analysis for the same region but change parameters, it can do so
+more efficiently since it can draw from the local database instead of having to pull all map data
+from external sources.
+Route data includes simulated flight paths generated by Pathfinding algorithms (e.g., A* or
+Dijkstra will be tried, and the most suitable one will be selected and used) between selected
+departure and arrival vertiports, and their calculated metrics. This includes route geometry,
+estimated distance, duration, safety status, and weather information considered during route
+generation. Storing route data is particularly important for revisiting past simulations or
+associating them with user preferences.
+Report and favourite data support B2B and B2C scenarios. The data that is analysed,
+report results, report types, and report creation times for expert users are also stored. Similarly,
+the favourite location or vertiports of passengers are stored, which is associated with the user
+profile. This enables users to access their records and favorite locations when they log back in.
+To protect data integrity and modular architecture principles, three basic datasets (schemas)
+are logically structured in the SkyPort data management infrastructure:
+1. User Database: User profiles, roles, GDPR-compliant anonymized data, and
+authentication/session data.
+2. Spatial Database: Vertiport coordinates, analysis zones, building obstacles, H3 cell
+geometries, and route paths.
+3. Analysis & Results Database: AHP/TOPSIS suitability scores, criterion weighting
+matrices, simulation outputs, and system-generated JSON/JSONB format reports.
+12
+These datasets can be physically stored on a single powerful PostgreSQL server, and schema
+separation is maintained. This enables the data architecture to immediately adapt to any future
+needs for system scalability (for example, if only the map database is moved to a separate
+server).
+Instead of direct access to the database, the Data Access layer is defined within the system.
+This approach offers a more sustainable system architecture by encapsulating the execution of
+data insertion, updating, deletion, spatial query execution, and loading the results of the
+analysis. This approach also aids in the minimization of the effects of future changes to the data
+model.
+Since SkyPort requires the management of both relational and spatial data, its data schema
+includes both classic table structures and geometry types. For example, users and reports are
+stored in standard relational tables, while analysis regions, H3 cells, building layers, and flight
+routes are modelled as spatial tables containing geometry columns. Appropriate spatial
+indexing mechanisms are used in these areas to improve spatial query performance.
+In conclusion, the persistent data management for SkyPort is founded upon the integration
+and responsibility-based separation of user/business information and geographic information.
+PostgreSQL and PostGIS enable the system to handle both standard application information
+and complex geographic information on a single robust infrastructure.
+3.5. Access Control and Security
+The SkyPort system has a multi-actor approach where both the B2B (Expert/Planner) and
+the B2C (Passenger/End User) can use the system for their respective needs. This means the
+access control and security features are a crucial part of the system. In this regard, the system
+has implemented a role-based access control approach. When a user tries to access the system,
+a specific role is assigned to the user. Based on this specific role, the user is allowed to perform
+specific tasks.
+In the SkyPort system, two types of users can be distinguished. The first one is the B2B
+(Expert/Planner), which refers to the expert side of the system. This side can perform various
+tasks on the system. They can perform analyses, modify the weights for the criteria in the MultiCriteria Decision Making (MCDM) algorithm, generate suitability maps, and even generate
+reports for the analyses. On the other hand, the other side of the system is the B2C
+(Passenger/End User), which refers to the end user side. This side does not have the privilege
+to generate analyses; however, this side can only view the flight routes on the Vertiport network
+created by the expert side.
+System Resources / Data B2C (Passenger / End User) B2B (Expert / Planner)
+User Profile Create, Read, Update (Own
+profile only)
+Create, Read, Update (Own
+profile only)
+Vertiport Network Data Read (Approved vertiports
+only), Filter, Manage
+Favorites (Add/Remove)
+Read (Approved vertiports
+only), Filter, Manage
+Favorites (Add/Remove)
+MCDM Analysis Data No Access Create (Define ROI), Read
+(Compare candidates),
+13
+Update (Criteria weights),
+Delete, Execute
+Route Simulation Create, Execute Execute (For simulation
+testing)
+Reports & Exports No Access Create (Save analysis), Read,
+Delete, Export
+Table 1. Access Matrix
+(Note: "Execute" refers to the permission to run an algorithm or simulation within the
+system.)
+Authentication
+The authentication mechanism in the SkyPort system is designed to ensure users can access
+the system securely. From a security standpoint, the authentication mechanism is designed to
+meet secure standards. Users log in with their email and password, and passwords are never
+stored in plain text; instead, they are securely stored using strong hash algorithms such as
+bcrypt. Once the authentication is successful, a token is assigned to the user, and this token is
+used for authentication for all subsequent requests. This ensures that the system can provide
+secure authentication for users without having to authenticate users for all requests.
+Authorization
+After authentication, the next step is authorization. In this step, it is clear that the identity of
+the user is checked, their role is established, and it is established whether they are allowed to
+perform a certain operation. This is achieved through a control mechanism within the Business
+Layer, and critical operations are performed by authorized users.
+Encryption and Data Security
+Data security does not stop at data access control. Rather, it extends to data storage processes
+and data transmission processes. In the case of the SkyPort system, user passwords are hashed,
+while data may also be encrypted at the database level if needed. Moreover, data
+communication between the client and server occurs through HTTPS. This reduces the risks of
+data interception or manipulation during data transfer.
+Key Management
+The management of secret keys that are used for encryption and authentication is also a
+crucial aspect of data security for a system. The secret keys are not stored in the source code;
+rather, they are managed using environment variables or secure configuration services. Key
+rotation may also be implemented if needed to ensure the security of the system over a long
+period of time.
+Security Considerations
+In the design of the security system for SkyPort, various threat scenarios were considered
+and the necessary security measures were designed. In this regard, the security system was
+designed to limit the threat of unauthorized access through the use of a Role-Based Access
+14
+Control (RBAC) system. This system allows users to perform only the functions allocated to
+their respective roles. In addition, the system was designed to address the security concern of
+password theft by avoiding the storage of passwords in plain text format. Instead, the passwords
+are safely stored in a database through the use of hash functions. This design approach to
+password storage enhances the security of user information even if the system is breached.
+In conclusion, the access control and security system for SkyPort is designed on the use of
+a role-based access system, secure authentication systems, robust encryption systems, and key
+management systems. This design approach to the security system for SkyPort separates the
+roles of various user categories sustainably, guaranteeing the security and integrity of the
+system and the information contained therein.
+3.6. Global Software Control
+SkyPort Vertiport Decision Support System employs a hybrid control flow combining eventdriven interactions with a request-response architecture. The Application Facade serves as the
+central dispatcher, coordinating all subsystem communication and ensuring a clean separation
+between the Presentation Layer and the underlying business logic.
+Request Initiation and Synchronization: Global software control starts at the Presentation
+Layer. User interactions with the ReactJS-based Expert Dashboard and Passenger Portal generate events that are converted to RESTful HTTP requests targeting the backend. The Application Facade receives the request and routes it to the corresponding business module: User Management, Analysis Management, Routing Module, Geospatial Data Management, Report Management, or Vertiport Management, depending on the request's nature. In the case of standard
+data access requests, the system performs the request synchronously. It waits for the response
+from the Post-GIS or the Operational Database before returning the response to the client. In
+the case of computationally expensive requests, the system performs the request asynchronously. The Application Facade routes the request to the corresponding business module: User
+Management, Analysis Management, Routing Module, Geospatial Data Management, Report
+Management, or Vertiport Management. It then notifies the user interface upon completion of
+the request to prevent the interface from freezing.
+Synchronization and Concurrency Issues: Handling simultaneous analyst sessions alongside
+heavy spatial data processing introduces several concurrency challenges, which are addressed
+as follows:
+• Thread Blocking during Heavy Spatial Computation: Multi-criteria decision-making algorithms such as AHP and TOPSIS, combined with large-scale H3 grid indexing
+over urban regions, require significant processing time. To prevent a single complex
+analysis request from blocking the entire server, the backend is implemented using asynchronous execution (Python asyncio / FastAPI). This allows the system to handle concurrent analysis sessions on non-blocking threads, ensuring the server remains responsive to multiple B2B and B2C users simultaneously.
+• Database Race Conditions: Concurrency conflicts may arise when multiple analysts
+attempt to initiate analyses over the same geographic region or modify shared vertiport
+candidate parameters simultaneously. This is mitigated through PostgreSQL transaction
+management and optimistic locking within the PostGIS and Operational Databases. If a
+15
+conflict is detected, the transaction is rolled back, and the user is presented with the
+latest consistent state before retrying.
+• External API Timeouts and Degradation: The system depends on three external
+APIs: Mapbox for map rendering, OpenStreetMap for geographical data, and a weather
+API for providing weather information. In the case where one of the APIs fails to respond within a certain threshold, the system degrades gracefully. In this case, the system
+will still be able to compute routes using the last known weather information and will
+still be able to render the map using cached tile information.
+• Concurrent Geospatial Data Updates: The Geospatial Data Management module periodically synchronizes raw spatial data from the OSM API. In the case where the system is scheduled to update the raw geographical information while a user is actively
+analysing the system, a read/write conflict may occur over the raw geographical information. This is handled by applying a read lock to the raw geographical information
+during an active user session and by scheduling the update to the raw geographical information during a low-traffic session.
+3.7. Boundary Conditions
+The boundary conditions of the SkyPort system define how the system behaves during
+startup, shutdown, and error handling. These conditions are critical to ensuring the system
+operates reliably, sustainably, and in a user-friendly manner.
+When the system starts, or the servers are live, the software does not immediately start
+accepting user requests. Instead, the basic components and connections necessary for the system
+to function correctly are verified. In this process, the necessary services and components are
+initialized, the connection with external services (Mapbox, OpenStreetMap, Weather API) is
+verified, and the necessary configurations are loaded. When the user interface is ready, the
+system can then start accepting user requests. In addition, the system also attempts to catch
+possible errors by testing whether the necessary dependencies (e.g., database connection) are
+working correctly during the initialization process. The initialization process occurs in the
+following steps:
+• First, the system's configuration and environment variables (API keys, security
+certificates) are loaded into memory.
+• A secure connection pool with the PostGIS database is established.
+• When a connection with the database cannot be made, the system halts the startup
+process (fatal error) and logs a corresponding error for the administrator.
+• The availability of external services (Mapbox, OpenStreetMap, Weather API) is tested
+with a simple ping request.
+• When all the components of the system's infrastructure are verified, the web server
+(Application Server) can start accepting HTTP requests.
+When the shutdown is complete, the open processes are closed, data operations are finished,
+and database connections are closed safely. This is necessary to ensure that data is not lost and
+that the system is in the correct state before it is restarted the next time. The "Graceful
+16
+Shutdown" protocol is implemented if the system is to be updated or maintained, ensuring that
+data is not lost or corrupted in the database.
+The shutdown procedure is as follows:
+• The moment the shutdown procedure is requested, the system does not shut down at
+once. Instead, the current user requests (HTTP requests) are refused, and the user is
+given the message "503 Service Unavailable" to mean that the system is undergoing
+maintenance.
+• The long-running processes that are currently undergoing analysis in the background
+(like the MCDM analysis or H3 cell calculation that has been initiated by the expert)
+are allowed to continue, or the process is paused at a safe point, and the status is saved
+to the database.
+• The open database connections are closed safely, temporary data in the cache is
+removed, and the server processes are closed safely.
+SkyPort is fault-tolerant, meaning it can handle errors resulting from hardware or software
+failure. The SkyPort prevents the system from totally crashing in case of unexpected errors. In
+the error process, the SkyPort system is able to handle errors as much as possible. In this case,
+user-related errors and system-related errors are handled by recording the errors using a logging
+mechanism. The errors are handled such that the system does not totally crash. In case of noncritical errors, the system continues to run, while in case of critical errors, the process is
+terminated safely.
+The error process of SkyPort includes the following steps:
+• In case the database is not available, a "Server Connection Error" message is shown to
+the user, while the frontend continues to run instead of totally crashing.
+• In the case where the OpenStreetMap and Weather services are unresponsive, the
+system will use "Graceful Degradation" rather than disabling the functionality
+altogether. This means, for example, that if the system cannot retrieve the weather
+information, the simulation will be done under ideal weather conditions, and the user
+will be given a message such as "Live weather data could not be obtained, standard
+conditions are being applied."
+• In the case where a flight path cannot be found and/or incorrect criterion weights are
+entered for the MCDM engine (for example, where the weights exceed 100%), the
+system will not mathematically lock up. This is because the backend will recognize the
+situation and provide understandable warning messages to the interface without
+revealing technical details.
+In conclusion, SkyPort's boundary condition management is based on the controlled handling
+of system startup, shutdown, and error conditions. This approach increases the reliability of the
+system while ensuring the user experience continues uninterrupted.
+4. Subsystem Services
+• Application Facade (IBusinessServices): This interface serves as the single entry
+point between the Presentation Layer and all Business Layer modules. It is exposed as
+17
+a provided interface on the Business Layer boundary and consumed by the Presentation
+Layer.
+• routeRequest(requestType, payload): Receives incoming client requests and
+delegates them to the appropriate business module.
+• aggregateResponse(moduleResults): Collects and merges responses from multiple
+modules into a unified response for the client.
+• validateSession(authToken): Verifies user session validity before forwarding any
+request to a business module.
+• handleException(error): Intercepts and standardizes error responses across all
+modules before returning them to the Presentation Layer.
+• User Management (IBusinessServices): This interface manages the full lifecycle of
+B2B and B2C user accounts. It is consumed by the Application Facade on every
+authenticated request.
+• authenticateUser(credentials): Validates user login credentials and returns a
+session token.
+• registerUser(userProfile): Creates a new user account and persists it to the User
+Database via the Data Access layer.
+• getUserProfile(userId): Retrieves user profile data including role, preferences, and
+authentication metadata.
+• updateUserProfile(userId, updatedData): Modifies existing user profile
+information.
+• authorizeAction(userId, action): Checks whether a given user role (B2B/B2C) has
+permission to perform a requested operation.
+• Analysis Management (IBusinessServices): This interface coordinates the core
+MCDM computation pipeline. It is consumed by the Application Facade and its results
+are forwarded to Report Management.
+• initiateAnalysis(regionId, criteriaWeights): Starts a new AHP/TOPSIS analysis
+session for a selected geographic region.
+• getHeatmapData(regionId): Returns computed suitability scores mapped to H3
+hexagonal cells for Map UI visualization.
+• compareCandidates(candidateList): Performs pairwise comparison of alternative
+vertiport locations and returns a ranked result set.
+• getAnalysisStatus(analysisId): Returns the current processing status of an ongoing
+asynchronous analysis.
+• getAnalysisResult(analysisId): Returns the completed analysis output, consumed
+by Report Management for saving and exporting.
+• Geospatial Data Management (IBusinessServices / IExternalAPI): This interface
+handles all spatial data operations. It is consumed by Analysis Management for scoring
+inputs and by the Routing Module for obstacle data. It also consumes the IExternalAPI
+interface to fetch raw data from OpenStreetMap.
+18
+• extractOSMData(boundingBox): Fetches raw spatial data from the OpenStreetMap API for a defined geographic boundary, returning building footprints,
+road networks, and land use data.
+• generateH3Grid(regionId, resolution): Divides a geographic area into Uber H3
+hexagonal cells at a specified resolution for use in analysis scoring.
+• executeSpatialQuery(queryParams): Runs spatial queries against the PostGIS database such as proximity searches, overlap detection, and buffer analysis.
+• getObstacleData(boundingBox): Returns building heights and no-fly zone
+boundaries within a given area, consumed by the Routing Module for safety
+evaluation.
+• Routing Module (IBusinessServices / IExternalAPI): This interface computes and
+evaluates flight paths. It is consumed by the Application Facade and consumes the
+IExternalAPI interface to retrieve meteorological data from the Weather Data Service.
+• calculateRoute(originId, destinationId, constraints): Computes the optimal
+flight path between two vertiport locations given operational constraints.
+• runSafetyCheck(routeId): Evaluates a candidate route against obstacle data and
+restricted airspace boundaries, returning a pass/fail result with conflict details.
+• evaluateWeatherImpact(routeId): Queries the Weather Data API and assesses the
+impact of current meteorological conditions on a given route.
+• getRouteSimulation(routeId): Returns a simulated flight path object for visualization in the Map UI.
+• Vertiport Management (IBusinessServices): This interface manages and exposes the
+approved vertiport network. It is consumed by the Application Facade and its output is
+rendered by the Presentation Layer.
+• getActiveNetwork(): Returns the full list of currently active and approved vertiport
+locations for Map UI network visualization.
+• filterVertiports(filterCriteria): Returns a filtered subset of vertiports based on
+user-defined parameters such as location, capacity, or availability.
+• getVertiportDetails(vertiportId): Returns detailed metadata for a specific vertiport node.
+• manageFavourites(userId, vertiportId, action): Adds or removes a vertiport from
+a user's favourites list, consumed by the Passenger Portal.
+• Report Management (IBusinessServices): This interface manages the persistence and
+export of analysis outputs. It is consumed by the Application Facade following a
+completed analysis cycle.
+• saveAnalysis(analysisId, userId): Persists a completed analysis result to the Analysis & Results Database via the Data Access layer.
+• exportReport(analysisId, format): Generates and returns a downloadable report
+in the specified format (PDF, CSV) containing analysis results, candidate rankings,
+and heatmap data.
+• getReportHistory(userId): Returns a list of previously saved analyses for a given
+user, consumed by the Expert Dashboard.
+19
+• Data Access (IDataAccess): This interface provides all Business Layer modules with
+controlled access to the underlying databases. No business module communicates with
+the databases directly — all persistence and retrieval operations pass through this
+interface.
+• spatialRead(query): Executes a read operation against the PostGIS Spatial Database, consumed by Geospatial Data Management and Routing Module.
+• spatialWrite(data): Persists spatial data, H3 grid structures, and building models
+to the PostGIS database.
+• userRead(userId): Retrieves encrypted user profile and authentication data from
+the User Database.
+• userWrite(userProfile): Persists new or updated user records to the User Database.
+• analysisRead(analysisId): Retrieves stored analysis results and historical report
+data from the Analysis & Results Database.
+• analysisWrite(analysisResult): Persists MCDM simulation outputs and computed
+suitability scores to the Analysis & Results Database.
+• External Systems (IExternalAPI): This interface supplies the Business Layer and
+Presentation Layer with necessary third-party data. All external calls are handled
+asynchronously with timeout and retry mechanisms. In the component diagram, this
+interface appears as a provided interface on the boundary of each external API
+component.
+• fetchMapTiles(coordinates, zoomLevel): Provides vector map tiles directly from
+the Mapbox API to the Map UI component in the Presentation Layer.
+• extractOSMData(boundingBox): Retrieves raw infrastructure, road network, and
+geographic constraint data from OpenStreetMap, consumed by Geospatial Data
+Management.
+• getMeteorologicalData(locationCoordinates): Fetches real-time weather
+conditions from the Weather Data Service, consumed by the Routing Module for
+flight safety evaluation.
+• Cross-Cutting Concerns (ISecurityAndLog): This interface provides system-wide
+infrastructure services consumed by all layers — Presentation, Business, and Data. In
+the component diagram, this interface appears on the boundary of each layer as both a
+provided and required interface, indicating that security and logging are applied
+uniformly across the entire system.
+• validateAccessToken(token): Verifies user authorization before allowing access to
+restricted endpoints within the Business or Data layers.
+• logSystemEvent(eventDetails, severityLevel): Records operational activities, errors, and user actions for monitoring and audit purposes.
+• monitorPerformance(moduleId): Tracks response times and resource usage
+across all modules.
+• encryptData(payload): Applies encryption to sensitive data fields before persistence or transmission.
+20
+• handleCommunication(source, target, message): Manages inter-module message
+passing and external API communication protocols.
+5. References
+Following list of references are relevant to this template document and the specific architecture
+of the SkyPort project. It includes the documents utilized while initiating the project idea,
+analyzing its requirements, and modeling its architectural design.
+1. Bruegge B. & Dutoit A.H.. (2010). Object-Oriented Software Engineering Using UML,
+Patterns, and Java, Prentice Hall, 3rd ed.
+2. What is Package Diagram, https://www.visual-paradigm.com/guide/uml-unifiedmodeling-language/what-is-package-diagram/ Accessed on 22 March 2025.
+3. What is Component Diagram, https://www.visual-paradigm.com/guide/uml-unifiedmodeling-language/what-is-component-diagram/ Accessed on 22 March 2025.
+4. What is Deployment Diagram,https://www.visual-paradigm.com/guide/uml-unifiedmodeling-language/what-is-deployment-diagram/ Accessed on 22 March 2025.
+5. Boeing, G. (2017). OSMnx: New methods for acquiring, constructing, analysing, and
+visualizing complex street networks. Computers, Environment and Urban Systems, 65,
+126–139.
+https://www.sciencedirect.com/science/article/abs/pii/S0198971516303970?via%3Dih
+ub6. Işık University. (2026). COMP/SOFT 4902/4912 Graduation Design Project Syllabus.
+Işık University.
+7. Lecture Notes, Işık University (2024). Software Engineering Course Material
+(SOFT2101).
+8. Mapbox. (2026). Mapbox GL JS Documentation for Web Maps. Retrieved from:
+https://docs.mapbox.com/mapbox-gl-js/
+9. OSMnx.(2026). Python for Street Networks. Python Package Index (PyPI). Retrieved
+from: https://pypi.org/project/osmnx/
+10. PostGIS Project Steering Committee. (2026). PostGIS Spatial Database Documentation.
+Retrieved from: https://postgis.net/docs/
+11. Uber Technologies. (2026). H3: Uber’s Hexagonal Hierarchical Spatial Index. Retrieved
+from: https://h3geo.org/
+12. United Nations. (2025). The Sustainable Development Goals Report 2025. Retrieved
+from: https://sdgs.un.org/goals
+13. OpenStreetMap Contributors, "Copyright and License," OpenStreetMap. Available:
+https://www.openstreetmap.org/copyright
+14. Grafana Labs. (2026). Mapbox GL in Dynamic Text Panel. Retrieved from:
+https://grafana.com/docs/plugins/marcusolsson-dynamictext-panel/latest/usecases/mapbox-gl/
+15. Karameşe, N. & Başoğlu, Y. (2026). SkyPort Geographic Decision Support System -
+Requirements Analysis Document (RAD). Işık University.

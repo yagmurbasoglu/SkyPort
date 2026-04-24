@@ -34,12 +34,12 @@ const Navbar = () => {
           sx={{
             width: 32,
             height: 32,
-            background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+            background: 'linear-gradient(135deg, #b65f70, #1d4ed8)',
             borderRadius: '8px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 0 16px rgba(59,130,246,0.4)',
+            boxShadow: '0 0 16px rgba(182,95,112,0.4)',
           }}
         >
           <FlightTakeoffIcon sx={{ fontSize: 18, color: '#fff' }} />
@@ -54,7 +54,7 @@ const Navbar = () => {
             WebkitTextFillColor: 'transparent',
           }}
         >
-          SKY<span style={{ color: '#3b82f6', WebkitTextFillColor: '#3b82f6' }}>PORT</span>
+          SKY<span style={{ color: '#b65f70', WebkitTextFillColor: '#b65f70' }}>PORT</span>
         </Typography>
         <Chip
           label="Istanbul UAM"
@@ -62,8 +62,8 @@ const Navbar = () => {
           sx={{
             height: 20,
             fontSize: '0.62rem',
-            background: 'rgba(59,130,246,0.12)',
-            border: '1px solid rgba(59,130,246,0.3)',
+            background: 'rgba(182,95,112,0.12)',
+            border: '1px solid rgba(182,95,112,0.3)',
             color: '#60a5fa',
             letterSpacing: '0.05em',
           }}

@@ -1,33 +1,49 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Box, Paper, Typography, TextField, Button, Stepper,
-  Step, StepLabel, IconButton, InputAdornment, Alert,
+  Box, Paper, Typography, TextField, Button, IconButton, InputAdornment, Alert,
 } from '@mui/material';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 import ExploreIcon from '@mui/icons-material/Explore';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useAuth } from '../context/AuthContext';
 
-const STEPS_REGISTER = ['Account', 'Role', 'Done'];
-const STEPS_LOGIN = ['Sign In', 'Done'];
+const authContainerSx = {
+  width: '100%',
+  maxWidth: 420,
+  borderRadius: '32px',
+  overflow: 'hidden',
+  boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
+  display: 'flex',
+  flexDirection: 'column',
+  background: 'transparent',
+};
 
-const glassCard = {
-  background: 'rgba(10, 18, 35, 0.92)',
-  backdropFilter: 'blur(16px)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: '20px',
+const headerPartSx = {
+  background: 'rgba(15, 23, 42, 0.4)',
+  backdropFilter: 'blur(32px)',
+  border: '1px solid rgba(182, 95, 112, 0.2)',
+  p: 4,
+  textAlign: 'center',
+  color: '#ffffff',
+};
+
+const formPartSx = {
+  background: 'rgba(255, 255, 255, 0.98)',
+  p: 4,
+  flex: 1,
 };
 
 const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, register } = useAuth();
 
-  const [mode, setMode] = useState(defaultMode); // 'login' | 'register'
+  const initialMode = location.state?.mode || defaultMode;
+  const [mode, setMode] = useState(initialMode); // 'login' | 'register'
   const [step, setStep] = useState(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,8 +52,6 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const steps = mode === 'register' ? STEPS_REGISTER : STEPS_LOGIN;
 
   const redirectByRole = (role) => {
     if (role === 'passenger') navigate('/passenger');
@@ -83,241 +97,228 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
     <Box
       sx={{
         minHeight: '100vh',
-        background: 'radial-gradient(ellipse at 20% 50%, rgba(37,99,235,0.12) 0%, transparent 60%), #0a0f1a',
+        backgroundImage: 'url(/istanbul_evtol.jpeg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         p: 2,
+        position: 'relative',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.75) 0%, rgba(182, 95, 112, 0.35) 100%)',
+          zIndex: 0,
+        }
       }}
     >
-      {/* Logo */}
-      <Box
-        onClick={() => navigate('/')}
-        sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 4, cursor: 'pointer' }}
-      >
-        <Box sx={{
-          width: 40, height: 40,
-          background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
-          borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 0 20px rgba(59,130,246,0.4)',
-        }}>
-          <FlightTakeoffIcon sx={{ color: '#fff', fontSize: 22 }} />
+      <Box sx={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        {/* Logo */}
+        <Box
+          onClick={() => navigate('/')}
+          sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 4, cursor: 'pointer' }}
+        >
+          <Box sx={{
+            width: 36, height: 36,
+            background: 'linear-gradient(135deg, #b65f70, #1a1a2e)',
+            borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 0 20px rgba(182,95,112,0.4)',
+          }}>
+            <FlightTakeoffIcon sx={{ color: '#fff', fontSize: 20 }} />
+          </Box>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', letterSpacing: '1px', color: '#ffffff', textTransform: 'uppercase' }}>
+            SKY<span style={{ color: '#b65f70' }}>PORT</span>
+          </Typography>
         </Box>
-        <Typography sx={{ fontWeight: 800, fontSize: '1.4rem', letterSpacing: '-0.5px', color: '#e2e8f0' }}>
-          SKY<span style={{ color: '#3b82f6' }}>PORT</span>
-        </Typography>
-      </Box>
 
-      <Paper sx={{ ...glassCard, width: '100%', maxWidth: 480, p: 4 }}>
-
-        {/* Stepper */}
-        <Stepper activeStep={step} sx={{ mb: 3 }}>
-          {steps.map((label) => (
-            <Step key={label}>
-              <StepLabel sx={{
-                '& .MuiStepLabel-label': { color: '#475569', fontSize: '0.75rem', fontFamily: 'Inter' },
-                '& .MuiStepLabel-label.Mui-active': { color: '#60a5fa' },
-                '& .MuiStepLabel-label.Mui-completed': { color: '#22c55e' },
-                '& .MuiStepIcon-root': { color: '#1e2d4a' },
-                '& .MuiStepIcon-root.Mui-active': { color: '#3b82f6' },
-                '& .MuiStepIcon-root.Mui-completed': { color: '#22c55e' },
-              }}>
-                {label}
-              </StepLabel>
-            </Step>
-          ))}
-        </Stepper>
-
-        {/* ── Login Step 0 ── */}
-        {mode === 'login' && step === 0 && (
-          <Box>
-            <Typography sx={{ fontWeight: 700, fontSize: '1.4rem', color: '#e2e8f0', mb: 0.5 }}>
-              Welcome back
+        <Paper sx={authContainerSx}>
+          {/* Header Part */}
+          <Box sx={headerPartSx}>
+            <Typography sx={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.2em', mb: 1, textTransform: 'uppercase', opacity: 0.8 }}>
+              Welcome to the
             </Typography>
-            <Typography variant="body2" sx={{ color: '#64748b', mb: 3 }}>
-              Sign in to your SkyPort account
+            <Typography sx={{ fontSize: '2.4rem', fontWeight: 300, letterSpacing: '0.15em', mb: 2, textTransform: 'uppercase', fontFamily: '"Outfit", sans-serif' }}>
+              SKYPORT
             </Typography>
-            {error && <Alert severity="error" sx={{ mb: 2, fontSize: '0.78rem' }}>{error}</Alert>}
-            <TextField
-              label="Email" type="email" fullWidth value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              sx={inputSx} size="small" variant="outlined"
-            />
-            <TextField
-              label="Password" type={showPassword ? 'text' : 'password'} fullWidth value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              sx={{ ...inputSx, mt: 2 }} size="small"
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={() => setShowPassword(p => !p)} edge="end" size="small" sx={{ color: '#475569' }}>
-                      {showPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
+            <Typography sx={{ fontSize: '0.75rem', lineHeight: 1.6, opacity: 0.7, maxWidth: 280, mx: 'auto' }}>
+              Experience the future of urban mobility in the heart of Istanbul.
+            </Typography>
+            
+            <Button 
+              size="small" 
+              sx={{ 
+                mt: 3, color: '#ffffff', border: '1px solid rgba(255,255,255,0.4)', 
+                borderRadius: '20px', px: 3, textTransform: 'none', fontSize: '0.75rem',
+                '&:hover': { background: 'rgba(255,255,255,0.1)', borderColor: '#ffffff' }
               }}
-            />
-            <Button
-              fullWidth variant="contained" sx={primaryBtnSx} onClick={handleLogin} disabled={loading}
+              onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setStep(0); setError(''); }}
             >
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Button>
-            <Typography variant="body2" sx={{ color: '#475569', textAlign: 'center', mt: 2 }}>
-              Don't have an account?{' '}
-              <span
-                style={{ color: '#60a5fa', cursor: 'pointer' }}
-                onClick={() => { setMode('register'); setStep(0); setError(''); }}
-              >
-                Register
-              </span>
-            </Typography>
-          </Box>
-        )}
-
-        {/* ── Register Step 0: Account ── */}
-        {mode === 'register' && step === 0 && (
-          <Box>
-            <Typography sx={{ fontWeight: 700, fontSize: '1.4rem', color: '#e2e8f0', mb: 0.5 }}>
-              Create account
-            </Typography>
-            <Typography variant="body2" sx={{ color: '#64748b', mb: 3 }}>
-              Join the SkyPort network
-            </Typography>
-            {error && <Alert severity="error" sx={{ mb: 2, fontSize: '0.78rem' }}>{error}</Alert>}
-            <TextField
-              label="Full Name" fullWidth value={name}
-              onChange={(e) => setName(e.target.value)}
-              sx={inputSx} size="small"
-            />
-            <TextField
-              label="Email" type="email" fullWidth value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              sx={{ ...inputSx, mt: 2 }} size="small"
-            />
-            <TextField
-              label="Password" type={showPassword ? 'text' : 'password'} fullWidth value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              sx={{ ...inputSx, mt: 2 }} size="small"
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={() => setShowPassword(p => !p)} edge="end" size="small" sx={{ color: '#475569' }}>
-                      {showPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-            <Button fullWidth variant="contained" sx={primaryBtnSx} onClick={handleAccountNext}>
-              Continue
-            </Button>
-            <Typography variant="body2" sx={{ color: '#475569', textAlign: 'center', mt: 2 }}>
-              Already have an account?{' '}
-              <span
-                style={{ color: '#60a5fa', cursor: 'pointer' }}
-                onClick={() => { setMode('login'); setStep(0); setError(''); }}
-              >
-                Sign in
-              </span>
-            </Typography>
-          </Box>
-        )}
-
-        {/* ── Register Step 1: Role selection ── */}
-        {mode === 'register' && step === 1 && (
-          <Box>
-            <IconButton onClick={() => setStep(0)} sx={{ mb: 1, color: '#475569', ml: -1 }}>
-              <ArrowBackIcon fontSize="small" />
-            </IconButton>
-            <Typography sx={{ fontWeight: 700, fontSize: '1.3rem', color: '#e2e8f0', mb: 0.5 }}>
-              How will you use SkyPort?
-            </Typography>
-            <Typography variant="body2" sx={{ color: '#64748b', mb: 3 }}>
-              Choose your role — you can change this later
-            </Typography>
-            {error && <Alert severity="error" sx={{ mb: 2, fontSize: '0.78rem' }}>{error}</Alert>}
-
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <RoleCard
-                icon={<AnalyticsIcon sx={{ fontSize: 28, color: '#3b82f6' }} />}
-                title="Analyst"
-                desc="Urban planners & aviation investors performing site analysis"
-                selected={selectedRole === 'expert'}
-                onClick={() => setSelectedRole('expert')}
-              />
-              <RoleCard
-                icon={<ExploreIcon sx={{ fontSize: 28, color: '#8b5cf6' }} />}
-                title="Passenger"
-                desc="Plan air taxi trips and explore Istanbul's UAM network"
-                selected={selectedRole === 'passenger'}
-                onClick={() => setSelectedRole('passenger')}
-                accentColor="#8b5cf6"
-              />
-            </Box>
-
-            <Button fullWidth variant="contained" sx={primaryBtnSx} onClick={handleRegister} disabled={loading}>
-              {loading ? 'Creating account...' : 'Create Account'}
+              {mode === 'login' ? 'Create Account' : 'Back to Login'}
             </Button>
           </Box>
-        )}
 
-        {/* ── Success Step ── */}
-        {(step === 2 || (mode === 'login' && step === 1)) && (
-          <Box sx={{ textAlign: 'center', py: 3 }}>
-            <CheckCircleIcon sx={{ fontSize: 56, color: '#22c55e', mb: 2 }} />
-            <Typography sx={{ fontWeight: 700, fontSize: '1.3rem', color: '#e2e8f0', mb: 1 }}>
-              {mode === 'login' ? 'Welcome back!' : 'Account created!'}
+          {/* Form Part */}
+          <Box sx={formPartSx}>
+            <Typography sx={{ textAlign: 'center', fontWeight: 500, fontSize: '1.1rem', color: '#1a1a2e', letterSpacing: '0.1em', mb: 0.5, textTransform: 'uppercase' }}>
+              {mode === 'login' ? 'User Login' : (step === 0 ? 'Register' : 'Role Selection')}
             </Typography>
-            <Typography variant="body2" sx={{ color: '#64748b' }}>
-              Redirecting you to your dashboard...
+            <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', color: '#b65f70', mb: 3, fontWeight: 500 }}>
+              {mode === 'login' ? 'Welcome back' : 'Join the network'}
             </Typography>
+
+            {error && <Alert severity="error" sx={{ mb: 2, fontSize: '0.72rem', borderRadius: '12px' }}>{error}</Alert>}
+
+            {/* ── Login Step 0 ── */}
+            {mode === 'login' && step === 0 && (
+              <Box>
+                <TextField
+                  label="Email" type="email" fullWidth value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  sx={inputSx} size="small" variant="outlined"
+                />
+                <TextField
+                  label="Password" type={showPassword ? 'text' : 'password'} fullWidth value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  sx={{ ...inputSx, mt: 2 }} size="small"
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton onClick={() => setShowPassword(p => !p)} edge="end" size="small" sx={{ color: '#64748b' }}>
+                          {showPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <Button
+                  fullWidth variant="contained" sx={primaryBtnSx} onClick={handleLogin} disabled={loading}
+                >
+                  {loading ? 'Signing in...' : 'Sign In'}
+                </Button>
+              </Box>
+            )}
+
+            {/* ── Register Step 0: Account ── */}
+            {mode === 'register' && step === 0 && (
+              <Box>
+                <TextField
+                  label="Full Name" fullWidth value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  sx={inputSx} size="small"
+                />
+                <TextField
+                  label="Email" type="email" fullWidth value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  sx={{ ...inputSx, mt: 2 }} size="small"
+                />
+                <TextField
+                  label="Password" type={showPassword ? 'text' : 'password'} fullWidth value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  sx={{ ...inputSx, mt: 2 }} size="small"
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton onClick={() => setShowPassword(p => !p)} edge="end" size="small" sx={{ color: '#64748b' }}>
+                          {showPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <Button fullWidth variant="contained" sx={primaryBtnSx} onClick={handleAccountNext}>
+                  Continue
+                </Button>
+              </Box>
+            )}
+
+            {/* ── Register Step 1: Role selection ── */}
+            {mode === 'register' && step === 1 && (
+              <Box>
+                <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                  <RoleCard
+                    icon={<AnalyticsIcon sx={{ fontSize: 28, color: '#b65f70' }} />}
+                    title="Analyst"
+                    desc="Urban planners performing site analysis"
+                    selected={selectedRole === 'expert'}
+                    onClick={() => setSelectedRole('expert')}
+                    accentColor="#b65f70"
+                  />
+                  <RoleCard
+                    icon={<ExploreIcon sx={{ fontSize: 28, color: '#1a1a2e' }} />}
+                    title="Passenger"
+                    desc="Plan trips and explore UAM network"
+                    selected={selectedRole === 'passenger'}
+                    onClick={() => setSelectedRole('passenger')}
+                    accentColor="#1a1a2e"
+                  />
+                </Box>
+                <Button fullWidth variant="contained" sx={primaryBtnSx} onClick={handleRegister} disabled={loading}>
+                  {loading ? 'Creating account...' : 'Create Account'}
+                </Button>
+                <Button fullWidth size="small" sx={{ mt: 1, color: '#b65f70', textTransform: 'none' }} onClick={() => setStep(0)}>
+                  Back to info
+                </Button>
+              </Box>
+            )}
+
+            {/* ── Success Step ── */}
+            {(step === 2 || (mode === 'login' && step === 1)) && (
+              <Box sx={{ textAlign: 'center', py: 3 }}>
+                <CheckCircleIcon sx={{ fontSize: 56, color: '#b65f70', mb: 2 }} />
+                <Typography sx={{ fontWeight: 700, fontSize: '1.3rem', color: '#1a1a2e', mb: 1 }}>
+                  {mode === 'login' ? 'Welcome back!' : 'Account created!'}
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#b65f70' }}>
+                  Redirecting you to your dashboard...
+                </Typography>
+              </Box>
+            )}
           </Box>
-        )}
-      </Paper>
+        </Paper>
+      </Box>
     </Box>
   );
 };
 
-// ─── Role Card ────────────────────────────────────────────────────────────────
-const RoleCard = ({ icon, title, desc, selected, onClick, accentColor = '#3b82f6' }) => (
+const RoleCard = ({ icon, title, desc, selected, onClick, accentColor = '#b65f70' }) => (
   <Box
     onClick={onClick}
     sx={{
       flex: 1, p: 2, borderRadius: 2, cursor: 'pointer', textAlign: 'center',
-      border: selected ? `1.5px solid ${accentColor}` : '1.5px solid rgba(255,255,255,0.07)',
-      background: selected ? `rgba(${accentColor === '#3b82f6' ? '59,130,246' : '139,92,246'},0.1)` : 'rgba(255,255,255,0.03)',
+      border: selected ? `1.5px solid ${accentColor}` : '1.5px solid rgba(0,0,0,0.05)',
+      background: selected ? `${accentColor}11` : 'rgba(0,0,0,0.02)',
       transition: 'all 0.2s',
-      '&:hover': { background: `rgba(${accentColor === '#3b82f6' ? '59,130,246' : '139,92,246'},0.07)` },
+      '&:hover': { background: 'rgba(0,0,0,0.04)' },
     }}
   >
     <Box sx={{ mb: 1 }}>{icon}</Box>
-    <Typography sx={{ fontWeight: 700, color: '#e2e8f0', fontSize: '0.9rem', mb: 0.5 }}>{title}</Typography>
-    <Typography sx={{ fontSize: '0.7rem', color: '#64748b', lineHeight: 1.4 }}>{desc}</Typography>
+    <Typography sx={{ fontWeight: 700, color: '#1a1a2e', fontSize: '0.85rem', mb: 0.5 }}>{title}</Typography>
+    <Typography sx={{ fontSize: '0.65rem', color: '#b65f70', lineHeight: 1.4 }}>{desc}</Typography>
   </Box>
 );
 
-// ─── Shared styles ─────────────────────────────────────────────────────────────
 const inputSx = {
   '& .MuiOutlinedInput-root': {
-    background: 'rgba(255,255,255,0.04)',
-    borderRadius: '8px',
+    background: '#b65f7008',
+    borderRadius: '12px',
     fontFamily: 'Inter',
-    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+    '& fieldset': { borderColor: 'rgba(26, 26, 46, 0.1)' },
+    '&:hover fieldset': { borderColor: 'rgba(182, 95, 112, 0.2)' },
+    '&.Mui-focused fieldset': { borderColor: '#b65f70' },
   },
-  '& .MuiInputLabel-root': { color: '#475569', fontFamily: 'Inter', fontSize: '0.85rem' },
-  '& .MuiInputBase-input': { color: '#e2e8f0', fontFamily: 'Inter' },
+  '& .MuiInputLabel-root': { color: '#64748b', fontFamily: 'Inter', fontSize: '0.82rem' },
+  '& .MuiInputBase-input': { color: '#1a1a2e', fontFamily: 'Inter' },
 };
 
 const primaryBtnSx = {
-  mt: 3, py: 1.2, fontWeight: 700, textTransform: 'none',
-  fontSize: '0.9rem', fontFamily: 'Inter',
-  background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-  boxShadow: '0 4px 16px rgba(59,130,246,0.35)',
-  borderRadius: '8px',
-  '&:hover': { boxShadow: '0 4px 22px rgba(59,130,246,0.5)' },
+  mt: 3, py: 1.4, fontWeight: 700, textTransform: 'uppercase',
+  fontSize: '0.85rem', fontFamily: 'Inter', letterSpacing: '0.1em',
+  background: '#1a1a2e',
+  borderRadius: '12px',
+  '&:hover': { background: '#2d2d50', boxShadow: '0 8px 24px rgba(26,26,46,0.3)' },
 };
 
 export default AuthPage;

@@ -113,7 +113,7 @@ const PassengerPage = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: '#0a0f1a' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: '#020617' }}>
       <Navbar />
 
       {/* Map + floating panels */}
@@ -133,7 +133,7 @@ const PassengerPage = () => {
           sx={{
             position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
             zIndex: 20,
-            background: 'rgba(10, 18, 35, 0.92)',
+            background: 'rgba(2, 6, 23, 0.92)',
             backdropFilter: 'blur(14px)',
             border: '1px solid rgba(255,255,255,0.07)',
             borderRadius: '12px',
@@ -145,7 +145,7 @@ const PassengerPage = () => {
             onChange={handleModeChange}
             sx={{
               minHeight: 42,
-              '& .MuiTabs-indicator': { background: 'linear-gradient(90deg, #3b82f6, #8b5cf6)', height: 2 },
+              '& .MuiTabs-indicator': { background: 'linear-gradient(90deg, #b65f70, #b65f70)', height: 2 },
               '& .MuiTab-root': {
                 minHeight: 42, py: 0, px: 2.5,
                 color: '#475569', fontFamily: 'Inter', fontWeight: 600,
@@ -234,7 +234,7 @@ const PassengerPage = () => {
 // ─── Vertiport Detail Card ─────────────────────────────────────────────────────
 const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
   <Paper sx={{
-    background: 'rgba(10, 18, 35, 0.95)',
+    background: 'rgba(2, 6, 23, 0.95)',
     backdropFilter: 'blur(16px)',
     border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: '16px',
@@ -296,8 +296,8 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
           size="small"
           sx={{
             height: 22, fontSize: '0.68rem', fontFamily: 'Inter',
-            background: 'rgba(59,130,246,0.1)',
-            border: '1px solid rgba(59,130,246,0.2)',
+            background: 'rgba(182,95,112,0.1)',
+            border: '1px solid rgba(182,95,112,0.2)',
             color: '#60a5fa',
           }}
         />

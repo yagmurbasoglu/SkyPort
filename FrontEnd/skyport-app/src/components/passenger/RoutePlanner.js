@@ -19,7 +19,7 @@ const autoSx = {
     fontSize: '0.82rem',
     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+    '&.Mui-focused fieldset': { borderColor: '#b65f70' },
   },
   '& .MuiInputLabel-root': { color: '#475569', fontFamily: 'Inter', fontSize: '0.82rem' },
   '& .MuiInputBase-input': { color: '#e2e8f0', fontFamily: 'Inter', fontSize: '0.82rem' },
@@ -116,7 +116,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
         zIndex: 10,
         pointerEvents: 'auto',
         width: { xs: 'calc(100vw - 48px)', sm: 320 },
-        background: 'rgba(10, 18, 35, 0.92)',
+        background: 'rgba(2, 6, 23, 0.92)',
         backdropFilter: 'blur(14px)',
         border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: '14px',
@@ -128,7 +128,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
     >
       {/* Header */}
       <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 1 }}>
-        <FlightIcon sx={{ fontSize: 16, color: '#8b5cf6' }} />
+        <FlightIcon sx={{ fontSize: 16, color: '#b65f70' }} />
         <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           Route Planner
         </Typography>
@@ -146,7 +146,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
             <TextField {...params} label="From" placeholder="Select departure" sx={autoSx} />
           )}
           renderOption={(props, vp) => (
-            <Box component="li" {...props} sx={{ fontSize: '0.8rem', color: '#e2e8f0', '&:hover': { background: 'rgba(59,130,246,0.1)' } }}>
+            <Box component="li" {...props} sx={{ fontSize: '0.8rem', color: '#e2e8f0', '&:hover': { background: 'rgba(182,95,112,0.1)' } }}>
               <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                 <Typography sx={{ fontSize: '0.8rem', color: '#e2e8f0' }}>{vp.name}</Typography>
                 <Typography sx={{ fontSize: '0.65rem', color: '#475569' }}>{vp.distanceFromCenter} km from center</Typography>
@@ -169,7 +169,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
               minWidth: 32, width: 32, height: 32, p: 0, borderRadius: '50%',
               color: '#475569', border: '1px solid rgba(255,255,255,0.1)',
               background: 'rgba(255,255,255,0.04)',
-              '&:hover': { color: '#e2e8f0', background: 'rgba(59,130,246,0.1)' },
+              '&:hover': { color: '#e2e8f0', background: 'rgba(182,95,112,0.1)' },
             }}
           >
             <SwapVertIcon sx={{ fontSize: 16 }} />
@@ -187,7 +187,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
             <TextField {...params} label="To" placeholder="Select arrival" sx={autoSx} />
           )}
           renderOption={(props, vp) => (
-            <Box component="li" {...props} sx={{ fontSize: '0.8rem', color: '#e2e8f0', '&:hover': { background: 'rgba(59,130,246,0.1)' } }}>
+            <Box component="li" {...props} sx={{ fontSize: '0.8rem', color: '#e2e8f0', '&:hover': { background: 'rgba(182,95,112,0.1)' } }}>
               <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                 <Typography sx={{ fontSize: '0.8rem', color: '#e2e8f0' }}>{vp.name}</Typography>
                 <Typography sx={{ fontSize: '0.65rem', color: '#475569' }}>{vp.distanceFromCenter} km from center</Typography>
@@ -210,7 +210,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
           sx={{
             mt: 2, py: 1.1, textTransform: 'none', fontWeight: 700,
             fontSize: '0.85rem', fontFamily: 'Inter',
-            background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+            background: 'linear-gradient(135deg, #b65f70, #6d28d9)',
             boxShadow: '0 4px 14px rgba(139,92,246,0.3)',
             '&:hover': { boxShadow: '0 4px 20px rgba(139,92,246,0.45)' },
             '&:disabled': { opacity: 0.4 },
@@ -259,7 +259,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
               <Box sx={{ mt: 1.5, background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)', p: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.8 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
-                    <AirIcon sx={{ fontSize: 14, color: '#38bdf8' }} />
+                    <AirIcon sx={{ fontSize: 14, color: '#b65f70' }} />
                     <Typography sx={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       Weather
                     </Typography>

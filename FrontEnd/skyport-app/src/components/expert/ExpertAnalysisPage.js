@@ -32,6 +32,16 @@ import ScienceIcon from '@mui/icons-material/Science';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend as RechartsLegend,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 import { useAuth } from '../../context/AuthContext';
 import { getMapStyle, hasMapboxToken } from '../../utils/mapStyle';
@@ -229,6 +239,11 @@ const ExpertAnalysisPage = () => {
     percent: 0,
     message: '',
   });
+  const [hoveredCell, setHoveredCell] = useState(null);
+  const [compareCriteria, setCompareCriteria] = useState('total');
+  const [windVisible, setWindVisible] = useState(false);
+  const pulseRef = useRef(null);
+  const windFrameRef = useRef(null);
 
   const weightTotal = useMemo(() => Object.values(weights).reduce((sum, value) => sum + Number(value || 0), 0), [weights]);
   const canRunAnalysis = ingestJob?.status === 'success' || ingestJob?.status === 'partial_success';
@@ -272,9 +287,9 @@ const ExpertAnalysisPage = () => {
       const message = event?.error?.message || 'Map could not load.';
       setMapNotice(`Map service warning: ${message}`);
     });
-      instance.on('mousemove', (event) => setCoords({ lng: event.lngLat.lng, lat: event.lngLat.lat }));
-      instance.on('load', () => {
-        setMapReady(true);
+    instance.on('mousemove', (event) => setCoords({ lng: event.lngLat.lng, lat: event.lngLat.lat }));
+    instance.on('load', () => {
+      setMapReady(true);
       instance.resize();
       instance.addSource('bbox-source', { type: 'geojson', data: emptyCollection });
       instance.addLayer({
@@ -321,26 +336,32 @@ const ExpertAnalysisPage = () => {
       });
       instance.addLayer({
         id: 'analysis-heatmap-fill',
-        type: 'fill',
+        type: 'fill-extrusion',
         source: 'analysis-heatmap',
         paint: {
-          'fill-color': [
+          'fill-extrusion-color': [
             'interpolate',
             ['linear'],
             ['get', 'suitability_score'],
-            0, '#ef4444',
-            50, '#f59e0b',
-            75, '#22c55e',
-            100, '#06b6d4',
+            0, 'rgba(45, 17, 96, 0.1)',
+            35, '#2d1160', // Deep Purple - LOW
+            60, '#721f81', // Purple/Magenta - NEUTRAL
+            80, '#b6367a', // Magenta/Rose - GOOD
+            95, '#fb8861', // Orange/Salmon - ELITE
+            100, '#fec287', // Peach/Yellow - PEAK
           ],
-          'fill-opacity': 0.46,
+          'fill-extrusion-height': [
+            'interpolate',
+            ['linear'],
+            ['get', 'suitability_score'],
+            0, 0,
+            50, 40,
+            70, 120,
+            100, 350,
+          ],
+          'fill-extrusion-base': 0,
+          'fill-extrusion-opacity': 0.55,
         },
-      });
-      instance.addLayer({
-        id: 'analysis-heatmap-line',
-        type: 'line',
-        source: 'analysis-heatmap',
-        paint: { 'line-color': 'rgba(255,255,255,0.45)', 'line-width': 0.7 },
       });
       instance.addSource('expert-route', { type: 'geojson', data: emptyCollection });
       instance.addLayer({
@@ -361,10 +382,70 @@ const ExpertAnalysisPage = () => {
           'circle-stroke-width': 2,
         },
       });
+
+      instance.addSource('top-pulse', { type: 'geojson', data: emptyCollection });
+      instance.addLayer({
+        id: 'top-pulse-layer',
+        type: 'circle',
+        source: 'top-pulse',
+        paint: {
+          'circle-radius': ['get', 'radius'],
+          'circle-color': '#fec287',
+          'circle-opacity': ['get', 'opacity'],
+          'circle-stroke-width': 0,
+        },
+      });
+
+      instance.addSource('best-candidate', { type: 'geojson', data: emptyCollection });
+      instance.addLayer({
+        id: 'best-candidate-flash',
+        type: 'fill-extrusion',
+        source: 'best-candidate',
+        paint: {
+          'fill-extrusion-color': '#fec287',
+          'fill-extrusion-height': 400,
+          'fill-extrusion-base': 0,
+          'fill-extrusion-opacity': ['get', 'opacity'],
+        },
+      });
+
+      instance.on('mousemove', 'analysis-heatmap-fill', (e) => {
+        if (e.features.length > 0) {
+          const feature = e.features[0];
+          setHoveredCell({
+            lngLat: e.lngLat,
+            point: e.point,
+            props: feature.properties,
+            scores: JSON.parse(feature.properties.criteria_scores || '{}'),
+          });
+          instance.getCanvas().style.cursor = 'pointer';
+        }
+      });
+
+      instance.on('mouseleave', 'analysis-heatmap-fill', () => {
+        setHoveredCell(null);
+        instance.getCanvas().style.cursor = '';
+      });
+
+      instance.addSource('wind-lines', { type: 'geojson', data: emptyCollection });
+      instance.addLayer({
+        id: 'wind-lines-layer',
+        type: 'line',
+        source: 'wind-lines',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 1.5,
+          'line-opacity': 0.15,
+          'line-dasharray': [2, 4],
+        },
+      });
+
       fetchAirspace(ISTANBUL_AIRSPACE_BOUNDS);
     });
     return () => {
       if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
+      if (windFrameRef.current) cancelAnimationFrame(windFrameRef.current);
       if (aircraftMarkerRef.current) aircraftMarkerRef.current.remove();
       if (instance) {
         instance.remove();
@@ -410,6 +491,44 @@ const ExpertAnalysisPage = () => {
     });
   }, [mapReady, routePoints]);
 
+  useEffect(() => {
+    if (!mapReady || !map.current) return;
+    const instance = map.current;
+    if (!windVisible) {
+      if (windFrameRef.current) cancelAnimationFrame(windFrameRef.current);
+      instance.getSource('wind-lines')?.setData(emptyCollection);
+      return;
+    }
+
+    const bounds = ISTANBUL_AIRSPACE_BOUNDS;
+    const lines = [];
+    for (let lat = bounds.south; lat <= bounds.north; lat += 0.015) {
+      lines.push({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [[bounds.west, lat], [bounds.east, lat]],
+        },
+      });
+    }
+
+    let dashOffset = 0;
+    const animateWind = () => {
+      dashOffset = (dashOffset + 0.15) % 6;
+      if (instance.getLayer('wind-lines-layer')) {
+        instance.setPaintProperty('wind-lines-layer', 'line-dasharray', [0.1, dashOffset, 2, 6 - dashOffset]);
+      }
+      windFrameRef.current = requestAnimationFrame(animateWind);
+    };
+
+    instance.getSource('wind-lines')?.setData({ type: 'FeatureCollection', features: lines });
+    animateWind();
+
+    return () => {
+      if (windFrameRef.current) cancelAnimationFrame(windFrameRef.current);
+    };
+  }, [mapReady, windVisible]);
+
   const setHeatmap = useCallback((geojson) => {
     const source = map.current?.getSource('analysis-heatmap');
     if (!source) return;
@@ -417,7 +536,58 @@ const ExpertAnalysisPage = () => {
     if (geojson?.features?.length) {
       const bounds = new mapboxgl.LngLatBounds();
       geojson.features.forEach((feature) => feature.geometry.coordinates[0].forEach((coord) => bounds.extend(coord)));
-      map.current.fitBounds(bounds, { padding: 72, duration: 900 });
+      map.current.fitBounds(bounds, { padding: 72, duration: 1200, pitch: 45, bearing: -15 });
+
+      // Prepare pulse source for top 3 and beacon for #1
+      const top3 = geojson.features
+        .filter((f) => f.properties.suitability_score >= 85)
+        .slice(0, 3)
+        .map((f, i) => {
+          const coords = f.geometry.coordinates[0];
+          const avgLng = coords.reduce((sum, c) => sum + c[0], 0) / coords.length;
+          const avgLat = coords.reduce((sum, c) => sum + c[1], 0) / coords.length;
+          return {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [avgLng, avgLat] },
+            properties: { id: f.properties.cell_index, rank: i + 1 },
+          };
+        });
+ 
+      // Robust Max Score Finding
+      const rank1 = geojson.features.reduce((prev, curr) => 
+        (prev.properties.suitability_score > curr.properties.suitability_score) ? prev : curr
+      );
+
+      let step = 0;
+      const animatePulse = () => {
+        step = (step + 1.2) % 100; // Slightly faster time step
+        const pulseOpacity = 0.6 - Math.sin(step / 10) * 0.4;
+        const flashOpacity = 0.3 + Math.abs(Math.sin(step / 8)) * 0.5; // Slower, softer flash
+        
+        if (map.current?.getSource('top-pulse')) {
+          map.current.getSource('top-pulse').setData({
+            type: 'FeatureCollection',
+            features: top3.map((f) => ({
+              ...f,
+              properties: { ...f.properties, radius: 15 + Math.sin(step / 10) * 10, opacity: pulseOpacity },
+            })),
+          });
+        }
+
+        if (map.current?.getSource('best-candidate') && rank1) {
+          map.current.getSource('best-candidate').setData({
+            type: 'Feature',
+            geometry: rank1.geometry,
+            properties: { 
+              opacity: flashOpacity
+            }
+          });
+        }
+
+        pulseRef.current = requestAnimationFrame(animatePulse);
+      };
+      if (pulseRef.current) cancelAnimationFrame(pulseRef.current);
+      if (top3.length > 0) animatePulse();
     }
   }, []);
 
@@ -499,6 +669,36 @@ const ExpertAnalysisPage = () => {
     setRouteLayer(null);
   }, [setRouteLayer]);
 
+  const normalizeWeights = useCallback(() => {
+    const total = Object.values(weights).reduce((sum, v) => sum + Number(v || 0), 0);
+    if (total === 0) {
+      setWeights(DEFAULT_WEIGHTS);
+      return;
+    }
+    const nextWeights = {};
+    Object.keys(weights).forEach((k) => {
+      nextWeights[k] = Number((weights[k] / total).toFixed(4));
+    });
+    setWeights(nextWeights);
+  }, [weights]);
+
+  const selectDefaultArea = useCallback(() => {
+    const centralIstanbul = {
+      west: 28.92,
+      east: 29.04,
+      south: 40.98,
+      north: 41.06,
+    };
+    setBbox(centralIstanbul);
+    if (map.current) {
+      map.current.flyTo({
+        center: [28.98, 41.02],
+        zoom: 12,
+        duration: 1200,
+      });
+    }
+  }, []);
+
   const clearSelection = useCallback(() => {
     setBbox(null);
     setSelectionRect(null);
@@ -550,7 +750,7 @@ const ExpertAnalysisPage = () => {
     const rect = mapContainer.current.getBoundingClientRect();
     const p1 = map.current.unproject([startPoint.current.clientX - rect.left, startPoint.current.clientY - rect.top]);
     const p2 = map.current.unproject([event.clientX - rect.left, event.clientY - rect.top]);
-    
+
     const west = Number(Math.min(p1.lng, p2.lng).toFixed(6));
     const east = Number(Math.max(p1.lng, p2.lng).toFixed(6));
     const south = Number(Math.min(p1.lat, p2.lat).toFixed(6));
@@ -625,10 +825,17 @@ const ExpertAnalysisPage = () => {
       setError('Run geodata ingest first.');
       return;
     }
-    if (Math.abs(weightTotal - 1) > 0.001) {
-      setError('Criteria weights must sum to 1.0.');
-      return;
+    // Auto-normalize if total is close to 1 but not exact, or just normalize anyway to be safe
+    const total = Object.values(weights).reduce((sum, v) => sum + Number(v || 0), 0);
+    const normalizedWeights = {};
+    if (total > 0) {
+      Object.keys(weights).forEach((k) => {
+        normalizedWeights[k] = weights[k] / total;
+      });
+    } else {
+      Object.assign(normalizedWeights, DEFAULT_WEIGHTS);
     }
+
     setError('');
     setBusy('analysis');
     setCompareResult(null);
@@ -641,7 +848,7 @@ const ExpertAnalysisPage = () => {
       const created = await axios.post('/api/analysis', {
         geodata_job_id: job.job_id,
         region_name: `${regionName} AHP TOPSIS`,
-        criteria_weights: weights,
+        criteria_weights: normalizedWeights,
       });
       setAnalysis(created.data);
       const finalStatus = await pollAnalysis(created.data.analysis_id);
@@ -815,7 +1022,10 @@ const ExpertAnalysisPage = () => {
           <TextField label="Region Name" size="small" value={regionName} onChange={(event) => setRegionName(event.target.value)} sx={fieldSx} />
           <Stack direction="row" spacing={1}>
             <Button fullWidth startIcon={<CropFreeIcon />} variant={drawMode ? 'contained' : 'outlined'} onClick={() => { setDrawMode((prev) => !prev); setError(''); }} sx={{ borderRadius: '8px', textTransform: 'none' }}>
-              {drawMode ? 'Selecting' : 'Select Area'}
+              {drawMode ? 'Selecting' : 'Draw Area'}
+            </Button>
+            <Button fullWidth variant="outlined" onClick={selectDefaultArea} sx={{ color: '#ff8da1', borderColor: 'rgba(255,141,161,0.4)', borderRadius: '8px', textTransform: 'none' }}>
+              Default Area
             </Button>
             <Button startIcon={<DeleteOutlineIcon />} onClick={clearSelection} sx={{ color: '#fca5a5', borderRadius: '8px', textTransform: 'none' }}>
               Clear
@@ -829,7 +1039,7 @@ const ExpertAnalysisPage = () => {
               </Box>
             ))}
           </Box>
-          <Button fullWidth variant="contained" onClick={runGeodataIngest} disabled={!bbox || Boolean(busy)} sx={{ bgcolor: '#0891b2', borderRadius: '8px', textTransform: 'none', fontWeight: 800, '&:hover': { bgcolor: '#0e7490' } }}>
+          <Button fullWidth variant="contained" onClick={runGeodataIngest} disabled={!bbox || Boolean(busy)} sx={{ bgcolor: '#b65f70', borderRadius: '8px', textTransform: 'none', fontWeight: 800, '&:hover': { bgcolor: '#944b59' } }}>
             {busy === 'ingest' || busy === 'analysis' ? <CircularProgress size={22} color="inherit" /> : 'Run Geodata + Analysis'}
           </Button>
           {ingestJob && (
@@ -865,10 +1075,13 @@ const ExpertAnalysisPage = () => {
             <Typography sx={{ color: '#e2e8f0', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
               <ScienceIcon fontSize="small" /> AHP/TOPSIS Weights
             </Typography>
-            <Typography sx={{ color: Math.abs(weightTotal - 1) <= 0.001 ? '#86efac' : '#fca5a5', fontSize: '0.76rem', mt: 0.5 }}>
-              Total weight: {weightTotal.toFixed(2)}
+            <Typography sx={{ color: '#94a3b8', fontSize: '0.76rem', mt: 0.5 }}>
+              Total: {weightTotal.toFixed(2)} {Math.abs(weightTotal - 1) > 0.001 && <span style={{ color: '#fca5a5' }}>(will be auto-normalized)</span>}
             </Typography>
           </Box>
+          <Button size="small" onClick={normalizeWeights} sx={{ color: '#e17b8f', alignSelf: 'flex-start', textTransform: 'none', mt: -1, fontSize: '0.7rem' }}>
+            Click to auto-balance weights now
+          </Button>
           {Object.entries(weights).map(([key, value]) => (
             <Box key={key}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
@@ -1000,17 +1213,97 @@ const ExpertAnalysisPage = () => {
                   </Box>
                 ))}
               </Stack>
-              <Button variant="outlined" onClick={compareTopCandidates} disabled={busy === 'compare' || analysisResult.top_candidates.length < 2} sx={{ color: '#e17b8f', borderColor: 'rgba(125,211,252,0.4)', borderRadius: '8px', textTransform: 'none' }}>
+              <Button variant="outlined" onClick={compareTopCandidates} disabled={busy === 'compare' || analysisResult.top_candidates.length < 2} sx={{ color: '#e17b8f', borderColor: 'rgba(182,95,112,0.4)', borderRadius: '8px', textTransform: 'none' }}>
                 Compare Top Candidates
               </Button>
+
               {compareResult && (
-                <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
-                  <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.7 }}>Comparison Ranking</Typography>
-                  {compareResult.ranked_candidates.map((candidate) => (
-                    <Typography key={candidate.cell_index} sx={{ color: '#94a3b8', fontSize: '0.76rem', mb: 0.4 }}>
-                      #{candidate.rank} · {candidate.cell_index} · {candidate.suitability_score.toFixed(1)}
+                <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.5 }}>
+                  <Typography sx={{ color: '#cbd5e1', fontSize: '0.82rem', fontWeight: 800, mb: 1.5 }}>Operational Comparison</Typography>
+
+                  <Stack direction="row" spacing={0.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 0.5 }}>
+                    {['total', ...Object.keys(criteriaLabels)].map((key) => (
+                      <Button
+                        key={key}
+                        size="small"
+                        variant={compareCriteria === key ? 'contained' : 'outlined'}
+                        onClick={() => setCompareCriteria(key)}
+                        sx={{
+                          fontSize: '0.62rem',
+                          textTransform: 'capitalize',
+                          borderRadius: '4px',
+                          minWidth: 0,
+                          px: 1,
+                          py: 0.2,
+                          bgcolor: compareCriteria === key ? '#b65f70' : 'transparent',
+                          borderColor: 'rgba(182, 95, 112, 0.4)',
+                          color: compareCriteria === key ? '#fff' : '#94a3b8',
+                          '&:hover': { bgcolor: compareCriteria === key ? '#944b59' : 'rgba(182, 95, 112, 0.1)' }
+                        }}
+                      >
+                        {key === 'total' ? 'Total' : criteriaLabels[key]}
+                      </Button>
+                    ))}
+                  </Stack>
+
+                  <Box sx={{ width: '100%', height: 200, mb: 1 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={
+                        compareResult.ranked_candidates.map((cand, idx) => {
+                          const scoreObj = JSON.parse(cand.criteria_scores || '{}');
+                          const value = compareCriteria === 'total'
+                            ? Math.round(cand.suitability_score)
+                            : Math.round((scoreObj[compareCriteria] || 0) * 100);
+                          const siteNames = ['Candidate 1', 'Candidate 2', 'Candidate 3'];
+                          return {
+                            name: siteNames[idx] || `Candidate ${idx + 1}`,
+                            value,
+                            fill: ['#fec287', '#fb8861', '#b6367a'][idx] || '#ffffff'
+                          };
+                        })
+                      } margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                        <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 9 }} />
+                        <RechartsTooltip
+                          cursor={{ fill: 'rgba(255,255,255,0.02)' }}
+                          contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '11px' }}
+                        />
+                        <Bar dataKey="value" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Box>
+                  <Box sx={{ bgcolor: 'rgba(182, 95, 112, 0.08)', borderLeft: '3px solid #b65f70', p: 1.2, mb: 2, borderRadius: '0 4px 4px 0' }}>
+                    <Typography sx={{ color: '#e2e8f0', fontSize: '0.72rem', fontWeight: 800, mb: 0.4 }}>
+                      Comparing: {compareCriteria === 'total' ? 'Overall Suitability' : criteriaLabels[compareCriteria]}
                     </Typography>
-                  ))}
+                    <Typography sx={{ color: '#94a3b8', fontSize: '0.68rem', lineHeight: 1.4 }}>
+                      Showing how the top 3 sites perform specifically in terms of {compareCriteria === 'total' ? 'overall mission potential' : criteriaLabels[compareCriteria].toLowerCase()}.
+                    </Typography>
+                  </Box>
+                  <Stack spacing={0.8}>
+                    {compareResult.ranked_candidates.map((candidate, idx) => (
+                      <Box key={candidate.cell_index} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: 'rgba(255,255,255,0.03)', p: 0.8, borderRadius: '4px' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ['#fec287', '#fb8861', '#b6367a'][idx] }} />
+                          <Typography sx={{ color: '#cbd5e1', fontSize: '0.72rem', fontWeight: 700 }}>
+                            Candidate {candidate.rank}
+                          </Typography>
+                        </Box>
+                        <Tooltip title={`Cell Index: ${candidate.cell_index}`}>
+                          <Typography sx={{ color: '#64748b', fontSize: '0.64rem', fontFamily: 'monospace', cursor: 'help' }}>
+                            #{candidate.rank}
+                          </Typography>
+                        </Tooltip>
+                        <Typography sx={{ color: ['#fec287', '#fb8861', '#b6367a'][idx], fontSize: '0.72rem', fontWeight: 900 }}>
+                          {compareCriteria === 'total'
+                            ? `${candidate.suitability_score.toFixed(1)}%`
+                            : `${Math.round(JSON.parse(candidate.criteria_scores || '{}')[compareCriteria] * 100)}%`
+                          }
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
                 </Box>
               )}
             </>
@@ -1035,6 +1328,23 @@ const ExpertAnalysisPage = () => {
             <Typography sx={{ color: '#94a3b8', fontSize: '0.7rem' }}>{label}</Typography>
           </Box>
         ))}
+        <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.06)' }} />
+        <Button
+          fullWidth
+          size="small"
+          variant={windVisible ? 'contained' : 'outlined'}
+          onClick={() => setWindVisible(!windVisible)}
+          sx={{
+            fontSize: '0.65rem',
+            textTransform: 'none',
+            borderRadius: '6px',
+            bgcolor: windVisible ? 'rgba(182, 95, 112, 0.4)' : 'transparent',
+            borderColor: 'rgba(182, 95, 112, 0.3)',
+            color: windVisible ? '#fff' : '#94a3b8',
+          }}
+        >
+          {windVisible ? 'Hide Wind Flow' : 'Show Wind Flow'}
+        </Button>
       </Paper>
       <Modal open={jobProgress.open && (busy === 'ingest' || busy === 'analysis')} disableAutoFocus>
         <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 420, maxWidth: 'calc(100% - 32px)', ...panelSx, p: 2.4 }}>
@@ -1078,6 +1388,67 @@ const ExpertAnalysisPage = () => {
           </Box>
         </Box>
       </Modal>
+      {hoveredCell && (
+        <Paper sx={{
+          position: 'absolute',
+          left: hoveredCell.point.x + 15,
+          top: hoveredCell.point.y - 15,
+          zIndex: 100,
+          p: 1.5,
+          width: 200,
+          background: 'rgba(2, 6, 23, 0.95)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(182, 95, 112, 0.3)',
+          borderRadius: '12px',
+          pointerEvents: 'none',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+        }}>
+          <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: '0.8rem', mb: 1 }}>
+            Cell {hoveredCell.props.cell_index}
+          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+            <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem' }}>Total Suitability</Typography>
+            <Typography sx={{ color: '#fec287', fontWeight: 900, fontSize: '0.8rem' }}>{Number(hoveredCell.props.suitability_score).toFixed(1)}%</Typography>
+          </Box>
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', mb: 1 }} />
+          {Object.entries(hoveredCell.scores).map(([k, v]) => (
+            <Box key={k} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
+              <Typography sx={{ color: '#64748b', fontSize: '0.65rem', textTransform: 'capitalize' }}>{k.replace('_', ' ')}</Typography>
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.65rem', fontWeight: 700 }}>{Number(v * 100).toFixed(0)}%</Typography>
+            </Box>
+          ))}
+        </Paper>
+      )}
+
+      {analysisResult && (
+        <Paper sx={{ ...panelSx, position: 'absolute', bottom: 32, right: 16, width: 220, p: 2, zIndex: 20 }}>
+          <Typography sx={{ color: '#e2e8f0', fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: 1, mb: 2 }}>
+            Suitability Legend
+          </Typography>
+          <Stack spacing={1.2}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ width: 14, height: 14, borderRadius: '3px', bgcolor: '#fec287', boxShadow: '0 0 12px #fec287' }} />
+              <Typography sx={{ color: '#cbd5e1', fontSize: '0.75rem' }}>Thermal Peak (95+)</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ width: 14, height: 14, borderRadius: '3px', bgcolor: '#fb8861', boxShadow: '0 0 8px #fb8861' }} />
+              <Typography sx={{ color: '#cbd5e1', fontSize: '0.75rem' }}>Elite Candidate (85+)</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ width: 14, height: 14, borderRadius: '3px', bgcolor: '#b6367a', boxShadow: '0 0 8px #b6367a' }} />
+              <Typography sx={{ color: '#cbd5e1', fontSize: '0.75rem' }}>Suitable Zone (60+)</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ width: 14, height: 14, borderRadius: '3px', bgcolor: '#721f81' }} />
+              <Typography sx={{ color: '#cbd5e1', fontSize: '0.75rem' }}>Low Potential (30+)</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ width: 14, height: 14, borderRadius: '3px', bgcolor: '#2d1160', border: '1px solid rgba(255,255,255,0.1)' }} />
+              <Typography sx={{ color: '#cbd5e1', fontSize: '0.75rem' }}>Unsuitable / No Data</Typography>
+            </Box>
+          </Stack>
+        </Paper>
+      )}
     </Box>
   );
 };

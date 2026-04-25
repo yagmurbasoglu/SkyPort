@@ -21,6 +21,20 @@ if (token) {
   axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 }
 
+// Add a response interceptor to handle 401 errors globally
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(TOKEN_KEY);
+      delete axios.defaults.headers.common['Authorization'];
+      window.location.href = '/auth?expired=true';
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
     try {

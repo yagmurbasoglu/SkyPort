@@ -45,6 +45,11 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
   const initialMode = location.state?.mode || defaultMode;
   const [mode, setMode] = useState(initialMode); // 'login' | 'register'
   const [step, setStep] = useState(0);
+  
+  // Check for expired session flag in URL
+  const queryParams = new URLSearchParams(location.search);
+  const isExpired = queryParams.get('expired') === 'true';
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -168,6 +173,12 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
             <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', color: '#b65f70', mb: 3, fontWeight: 500 }}>
               {mode === 'login' ? 'Welcome back' : 'Join the network'}
             </Typography>
+
+            {isExpired && !error && mode === 'login' && (
+              <Alert severity="warning" sx={{ mb: 2, fontSize: '0.72rem', borderRadius: '12px', bgcolor: 'rgba(182, 95, 112, 0.1)', color: '#b65f70', border: '1px solid rgba(182, 95, 112, 0.2)' }}>
+                Your session has expired. Please log in again to continue.
+              </Alert>
+            )}
 
             {error && <Alert severity="error" sx={{ mb: 2, fontSize: '0.72rem', borderRadius: '12px' }}>{error}</Alert>}
 

@@ -257,15 +257,7 @@ def _run_topsis(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[d
 
 
 class AnalysisService:
-    def start_analysis(
-        self,
-        *,
-        user_id: int,
-        geodata_job_id: str,
-        region_name: str | None,
-        criteria_weights: dict[str, float],
-    ) -> dict[str, Any]:
-        weights = validate_criteria_weights(criteria_weights)
+    def _prepare_analysis_inputs(self, geodata_job_id: str) -> tuple[dict[str, Any], list[str]]:
         geodata_job = analysis_repo.get_geodata_job(geodata_job_id)
         if geodata_job is None:
             raise _error(
@@ -288,9 +280,22 @@ class AnalysisService:
                 "GEODATA_CELLS_NOT_FOUND",
                 "Geodata ingest job has no H3 cells to analyze.",
             )
+        return geodata_job, cells
+
+    def start_analysis(
+        self,
+        *,
+        user_id: int,
+        geodata_job_id: str,
+        region_name: str | None,
+        criteria_weights: dict[str, float],
+    ) -> dict[str, Any]:
+        weights = validate_criteria_weights(criteria_weights)
+        geodata_job, cells = self._prepare_analysis_inputs(geodata_job_id)
 
         analysis = analysis_repo.create_analysis(
             user_id=user_id,
+            geodata_job_id=geodata_job_id,
             region_name=region_name or geodata_job["region_name"],
             criteria_weights=weights,
         )
@@ -299,6 +304,44 @@ class AnalysisService:
             "analysis_id": analysis["id"],
             "status": analysis["status"],
             "message": "Analysis job started.",
+        }
+
+    def recalculate_analysis(
+        self,
+        *,
+        user_id: int,
+        analysis_id: int,
+        criteria_weights: dict[str, float],
+    ) -> dict[str, Any]:
+        weights = validate_criteria_weights(criteria_weights)
+        analysis = analysis_repo.get_analysis(analysis_id)
+        if analysis is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "Analysis not found.")
+        if analysis.get("user_id") not in (None, user_id):
+            raise _error(
+                status.HTTP_403_FORBIDDEN,
+                "ANALYSIS_ACCESS_DENIED",
+                "You do not have permission to recalculate this analysis.",
+            )
+
+        geodata_job_id = analysis.get("geodata_job_id")
+        if not geodata_job_id:
+            raise _error(
+                status.HTTP_409_CONFLICT,
+                "ANALYSIS_SOURCE_MISSING",
+                "This analysis cannot be recalculated because its source geodata job is missing.",
+            )
+
+        geodata_job, cells = self._prepare_analysis_inputs(geodata_job_id)
+        updated = analysis_repo.reset_analysis(analysis_id, criteria_weights=weights)
+        if updated is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "Analysis not found.")
+
+        self._start_worker(analysis_id, geodata_job, cells, weights)
+        return {
+            "analysis_id": analysis_id,
+            "status": updated["status"],
+            "message": "Analysis weights saved and recalculation has started.",
         }
 
     def _start_worker(
@@ -433,6 +476,32 @@ class AnalysisService:
                 }
             )
         return {"type": "FeatureCollection", "features": features}
+
+    def get_cell_detail(self, analysis_id: int, cell_index: str) -> dict[str, Any]:
+        analysis = analysis_repo.get_analysis(analysis_id)
+        if analysis is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "Analysis not found.")
+
+        row = analysis_repo.get_result_by_cell(analysis_id, cell_index, include_geometry=True)
+        if row is None:
+            raise _error(
+                status.HTTP_404_NOT_FOUND,
+                "ANALYSIS_CELL_NOT_FOUND",
+                "Detailed data for the selected cell is not available.",
+                {"analysis_id": analysis_id, "cell_index": cell_index},
+            )
+
+        ranked_rows = analysis_repo.list_results(analysis_id)
+        rank = next((index + 1 for index, item in enumerate(ranked_rows) if item["cell_index"] == cell_index), None)
+        return {
+            "analysis_id": analysis_id,
+            "cell_index": cell_index,
+            "rank": rank,
+            "suitability_score": row["suitability_score"],
+            "score_class": _score_class(row["suitability_score"]),
+            "criteria_breakdown": row["criteria_breakdown"],
+            "geometry": row.get("geometry"),
+        }
 
     def compare_candidates(self, analysis_id: int, cell_indexes: list[str]) -> dict[str, Any]:
         analysis = analysis_repo.get_analysis(analysis_id)

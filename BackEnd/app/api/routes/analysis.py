@@ -4,11 +4,13 @@ from pydantic import BaseModel
 from app.api.deps import RoleChecker
 from app.models.user import User
 from app.schemas.analysis import (
+    AnalysisCellDetailResponse,
     AnalysisCompareRequest,
     AnalysisCompareResponse,
     AnalysisCreateRequest,
     AnalysisCreateResponse,
     AnalysisHeatmapResponse,
+    AnalysisRecalculateRequest,
     AnalysisResultResponse,
     AnalysisStatusResponse,
 )
@@ -42,6 +44,24 @@ def create_analysis(
     return AnalysisCreateResponse(**result)
 
 
+@router.post("/{analysis_id}/recalculate", response_model=AnalysisCreateResponse)
+def recalculate_analysis(
+    analysis_id: int,
+    req: AnalysisRecalculateRequest,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisCreateResponse:
+    """
+    Re-run an existing analysis with updated criteria weights.
+    Access: Experts only.
+    """
+    result = AnalysisService().recalculate_analysis(
+        user_id=current_user.id,
+        analysis_id=analysis_id,
+        criteria_weights=req.criteria_weights,
+    )
+    return AnalysisCreateResponse(**result)
+
+
 @router.get("/{analysis_id}/status", response_model=AnalysisStatusResponse)
 def get_analysis_status(
     analysis_id: int,
@@ -70,6 +90,16 @@ def get_analysis_heatmap(
 ) -> AnalysisHeatmapResponse:
     result = AnalysisService().get_heatmap(analysis_id)
     return AnalysisHeatmapResponse(**result)
+
+
+@router.get("/{analysis_id}/cells/{cell_index}", response_model=AnalysisCellDetailResponse)
+def get_analysis_cell_detail(
+    analysis_id: int,
+    cell_index: str,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisCellDetailResponse:
+    result = AnalysisService().get_cell_detail(analysis_id, cell_index)
+    return AnalysisCellDetailResponse(**result)
 
 
 @router.post("/compare", response_model=AnalysisCompareResponse)

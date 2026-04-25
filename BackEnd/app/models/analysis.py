@@ -18,6 +18,12 @@ class Analysis(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    geodata_job_id: Mapped[str | None] = mapped_column(
+        String(32),
+        ForeignKey("geodata_ingest_jobs.job_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     region_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="pending")
     criteria_weights: Mapped[dict | None] = mapped_column(JSON, nullable=True)

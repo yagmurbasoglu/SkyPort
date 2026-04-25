@@ -6,10 +6,6 @@ export const hasMapboxToken = () => {
 };
 
 export const getMapStyle = () => {
-  if (hasMapboxToken()) {
-    return 'mapbox://styles/mapbox/dark-v11';
-  }
-
   return {
     version: 8,
     sources: {
@@ -23,8 +19,24 @@ export const getMapStyle = () => {
         maxzoom: 19,
         attribution: '&copy; OpenStreetMap contributors',
       },
+      satellite: {
+        type: 'raster',
+        tiles: [
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        ],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom: 19,
+        attribution: 'Tiles &copy; Esri',
+      },
     },
     layers: [
+      {
+        id: 'satellite',
+        type: 'raster',
+        source: 'satellite',
+        layout: { visibility: 'none' },
+      },
       {
         id: 'osm',
         type: 'raster',

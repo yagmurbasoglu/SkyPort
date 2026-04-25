@@ -24,9 +24,9 @@ from app.schemas.geodata import BoundingBox, IngestRequest
 
 ISTANBUL_BOUNDING_BOX = BoundingBox(
     west=28.45,
-    east=29.55,
+    east=29.95,
     south=40.75,
-    north=41.48,
+    north=41.65,
 )
 
 try:

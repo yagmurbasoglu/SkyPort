@@ -15,6 +15,7 @@ def _analysis_to_dict(analysis: Analysis) -> dict[str, Any]:
     return {
         "id": analysis.id,
         "user_id": analysis.user_id,
+        "geodata_job_id": analysis.geodata_job_id,
         "region_name": analysis.region_name,
         "status": analysis.status,
         "criteria_weights": analysis.criteria_weights or {},
@@ -65,17 +66,41 @@ def list_geodata_cells(job_id: str) -> list[str]:
         return list(db.execute(stmt).scalars().all())
 
 
-def create_analysis(*, user_id: int, region_name: str | None, criteria_weights: dict[str, float]) -> dict[str, Any]:
+def create_analysis(
+    *,
+    user_id: int,
+    geodata_job_id: str,
+    region_name: str | None,
+    criteria_weights: dict[str, float],
+) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
         analysis = Analysis(
             user_id=user_id,
+            geodata_job_id=geodata_job_id,
             region_name=region_name,
             status="running",
             criteria_weights=criteria_weights,
             started_at=now,
         )
         db.add(analysis)
+        db.commit()
+        db.refresh(analysis)
+        return _analysis_to_dict(analysis)
+
+
+def reset_analysis(analysis_id: int, *, criteria_weights: dict[str, float]) -> dict[str, Any] | None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        analysis = db.get(Analysis, analysis_id)
+        if analysis is None:
+            return None
+
+        db.execute(delete(AnalysisResult).where(AnalysisResult.analysis_id == analysis_id))
+        analysis.status = "running"
+        analysis.criteria_weights = criteria_weights
+        analysis.started_at = now
+        analysis.completed_at = None
         db.commit()
         db.refresh(analysis)
         return _analysis_to_dict(analysis)
@@ -135,6 +160,20 @@ def list_results(analysis_id: int, *, include_geometry: bool = False) -> list[di
             .order_by(AnalysisResult.suitability_score.desc())
         )
         return [_result_to_dict(row, include_geometry=include_geometry) for row in db.execute(stmt).scalars().all()]
+
+
+def get_result_by_cell(analysis_id: int, cell_index: str, *, include_geometry: bool = False) -> dict[str, Any] | None:
+    with SessionLocal() as db:
+        stmt = (
+            select(AnalysisResult)
+            .where(
+                AnalysisResult.analysis_id == analysis_id,
+                AnalysisResult.cell_index == cell_index,
+            )
+            .limit(1)
+        )
+        row = db.execute(stmt).scalar_one_or_none()
+        return _result_to_dict(row, include_geometry=include_geometry) if row else None
 
 
 def summarize_results(analysis_id: int) -> dict[str, Any]:

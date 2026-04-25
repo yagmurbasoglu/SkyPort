@@ -19,6 +19,10 @@ class AnalysisCreateResponse(BaseModel):
     message: str
 
 
+class AnalysisRecalculateRequest(BaseModel):
+    criteria_weights: dict[str, float]
+
+
 class AnalysisStatusResponse(BaseModel):
     analysis_id: int
     status: AnalysisStatus
@@ -56,9 +60,19 @@ class AnalysisHeatmapResponse(BaseModel):
     features: list[dict]
 
 
+class AnalysisCellDetailResponse(BaseModel):
+    analysis_id: int
+    cell_index: str
+    rank: int | None = None
+    suitability_score: float
+    score_class: str
+    criteria_breakdown: dict
+    geometry: dict | None = None
+
+
 class AnalysisCompareRequest(BaseModel):
     analysis_id: int
-    cell_indexes: list[str] = Field(..., min_length=1)
+    cell_indexes: list[str] = Field(..., min_length=2)
 
 
 class AnalysisCompareResponse(BaseModel):

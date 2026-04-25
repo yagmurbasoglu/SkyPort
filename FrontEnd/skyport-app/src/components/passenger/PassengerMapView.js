@@ -3,20 +3,19 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import {
   Box,
-  Button,
-  Chip,
   Divider,
   IconButton,
   Paper,
   Stack,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import PolicyIcon from '@mui/icons-material/Policy';
 import RadarIcon from '@mui/icons-material/Radar';
-import TuneIcon from '@mui/icons-material/Tune';
+import SatelliteAltIcon from '@mui/icons-material/SatelliteAlt';
+import MapIcon from '@mui/icons-material/Map';
 import axios from 'axios';
 import { getMapStyle, hasMapboxToken } from '../../utils/mapStyle';
 
@@ -24,9 +23,9 @@ const ISTANBUL_CENTER = [28.9784, 41.0082];
 const ISTANBUL_ZOOM = 10.5;
 const ISTANBUL_AIRSPACE_BOUNDS = {
   west: 28.45,
-  east: 29.55,
+  east: 29.95,
   south: 40.75,
-  north: 41.48,
+  north: 41.65,
 };
 const emptyCollection = { type: 'FeatureCollection', features: [] };
 
@@ -103,7 +102,16 @@ const routeVisualStyle = (route) => {
 };
 
 const applyRasterBasemapMode = (instance, mode) => {
-  if (!instance?.getLayer('osm')) return;
+  if (!instance?.getLayer('osm') || !instance?.getLayer('satellite')) return;
+  const showSatellite = mode === 'satellite';
+  instance.setLayoutProperty('osm', 'visibility', showSatellite ? 'none' : 'visible');
+  instance.setLayoutProperty('satellite', 'visibility', showSatellite ? 'visible' : 'none');
+  if (showSatellite) {
+    instance.setPaintProperty('satellite', 'raster-opacity', 1);
+    instance.setPaintProperty('satellite', 'raster-saturation', 0);
+    instance.setPaintProperty('satellite', 'raster-contrast', 0);
+    return;
+  }
   if (mode === 'light') {
     instance.setPaintProperty('osm', 'raster-opacity', 1);
     instance.setPaintProperty('osm', 'raster-brightness-min', 0);
@@ -145,10 +153,10 @@ const PassengerMapView = ({
   const [zoom, setZoom] = useState(ISTANBUL_ZOOM.toFixed(1));
   const [mapLoaded, setMapLoaded] = useState(false);
   const [airspaceSummary, setAirspaceSummary] = useState(null);
-  const [baseTone, setBaseTone] = useState('dark');
-  const [mapControlsOpen, setMapControlsOpen] = useState(false);
+  const [baseTone, setBaseTone] = useState('light');
   const [showNfz, setShowNfz] = useState(true);
   const [showControlled, setShowControlled] = useState(true);
+  const [mapControlsOpen, setMapControlsOpen] = useState(false);
 
   // ── Initialize map ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -174,7 +182,7 @@ const PassengerMapView = ({
     map.current.on('load', () => {
       setMapLoaded(true);
       map.current.resize();
-      applyRasterBasemapMode(map.current, 'dark');
+      applyRasterBasemapMode(map.current, 'light');
       map.current.addSource('passenger-airspace-overlay', {
         type: 'geojson',
         data: emptyCollection,
@@ -494,108 +502,102 @@ const PassengerMapView = ({
         ))}
       </Paper>
 
-      <IconButton
-        onClick={() => setMapControlsOpen((prev) => !prev)}
-        sx={{
-          position: 'absolute',
-          right: 16,
-          bottom: 16,
-          zIndex: 12,
-          width: 52,
-          height: 52,
-          bgcolor: 'rgba(2, 6, 23, 0.94)',
-          color: '#e2e8f0',
-          border: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
-          '&:hover': { bgcolor: 'rgba(15, 23, 42, 0.98)' },
-        }}
-      >
-        <TuneIcon />
-      </IconButton>
-
-      {mapControlsOpen && (
-        <Paper
+      <Stack sx={{ position: 'absolute', right: 28, top: 108, zIndex: 12, alignItems: 'center' }} spacing={0.9}>
+        <Tooltip title={mapControlsOpen ? 'Close map layers' : 'Open map layers'} placement="left">
+          <IconButton
+            onClick={() => setMapControlsOpen((prev) => !prev)}
+            sx={{
+              width: 38,
+              height: 38,
+              bgcolor: '#1d4ed8',
+              color: '#eff6ff',
+              border: '3px solid rgba(255,255,255,0.92)',
+              boxShadow: '0 12px 24px rgba(29,78,216,0.28)',
+              '&:hover': { bgcolor: '#1e40af' },
+            }}
+          >
+            <MapIcon />
+          </IconButton>
+        </Tooltip>
+        <Box
           sx={{
-            position: 'absolute',
-            right: 78,
-            bottom: 16,
-            zIndex: 11,
-            width: 250,
-            p: 1.5,
-            background: 'rgba(2, 6, 23, 0.92)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '14px',
-            boxShadow: '0 18px 48px rgba(0,0,0,0.34)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 0.9,
+            maxHeight: mapControlsOpen ? 320 : 0,
+            opacity: mapControlsOpen ? 1 : 0,
+            transform: `translateY(${mapControlsOpen ? 0 : -8}px)`,
+            overflow: 'hidden',
+            pointerEvents: mapControlsOpen ? 'auto' : 'none',
+            transition: 'max-height 220ms ease, opacity 180ms ease, transform 220ms ease',
           }}
         >
-          <Stack spacing={1.1}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography sx={{ color: '#e2e8f0', fontSize: '0.74rem', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                Map Controls
-              </Typography>
-              <IconButton size="small" onClick={() => setMapControlsOpen(false)} sx={{ color: '#94a3b8' }}>
-                <CloseIcon fontSize="small" />
+          {[
+            { key: 'light', icon: <LightModeIcon fontSize="small" />, label: 'Light mode' },
+            { key: 'dark', icon: <DarkModeIcon fontSize="small" />, label: 'Dark mode' },
+            { key: 'satellite', icon: <SatelliteAltIcon fontSize="small" />, label: 'Satellite view' },
+          ].map((option) => (
+            <Tooltip key={option.key} title={option.label} placement="left">
+              <IconButton
+                onClick={() => {
+                  setBaseTone(option.key);
+                  setMapControlsOpen(false);
+                }}
+                sx={{
+                  width: 34,
+                  height: 34,
+                  bgcolor: baseTone === option.key ? '#dbeafe' : 'rgba(255,255,255,0.92)',
+                  color: baseTone === option.key ? '#1d4ed8' : '#475569',
+                  border: '1px solid rgba(148,163,184,0.18)',
+                  boxShadow: '0 8px 18px rgba(15,23,42,0.12)',
+                  '&:hover': { bgcolor: '#eff6ff' },
+                }}
+              >
+                {option.icon}
               </IconButton>
-            </Box>
-
-            <Stack direction="row" spacing={1}>
-              <Button
-                fullWidth
-                size="small"
-                variant={baseTone === 'dark' ? 'contained' : 'outlined'}
-                startIcon={<DarkModeIcon fontSize="small" />}
-                onClick={() => setBaseTone('dark')}
-                sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800 }}
-              >
-                Dark
-              </Button>
-              <Button
-                fullWidth
-                size="small"
-                variant={baseTone === 'light' ? 'contained' : 'outlined'}
-                startIcon={<LightModeIcon fontSize="small" />}
-                onClick={() => setBaseTone('light')}
-                sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800 }}
-              >
-                Light
-              </Button>
-            </Stack>
-
-            <Button
-              fullWidth
-              size="small"
-              variant={showNfz ? 'contained' : 'outlined'}
-              startIcon={<PolicyIcon fontSize="small" />}
-              onClick={() => setShowNfz((prev) => !prev)}
-              sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800, justifyContent: 'space-between' }}
+            </Tooltip>
+          ))}
+          <Tooltip title={showNfz ? `Hide NFZ (${airspaceSummary?.nfz ?? 0})` : `Show NFZ (${airspaceSummary?.nfz ?? 0})`} placement="left">
+            <IconButton
+              onClick={() => {
+                setShowNfz((prev) => !prev);
+                setMapControlsOpen(false);
+              }}
+              sx={{
+                width: 34,
+                height: 34,
+                bgcolor: showNfz ? '#dbeafe' : 'rgba(255,255,255,0.92)',
+                color: showNfz ? '#1d4ed8' : '#475569',
+                border: '1px solid rgba(148,163,184,0.18)',
+                boxShadow: '0 8px 18px rgba(15,23,42,0.12)',
+                '&:hover': { bgcolor: '#eff6ff' },
+              }}
             >
-              {showNfz ? 'Hide NFZ' : 'Show NFZ'}
-            </Button>
-            <Chip
-              label={`NFZ ${airspaceSummary?.nfz ?? 0}`}
-              size="small"
-              sx={{ bgcolor: 'rgba(239,68,68,0.14)', color: '#fca5a5', fontWeight: 800 }}
-            />
-
-            <Button
-              fullWidth
-              size="small"
-              variant={showControlled ? 'contained' : 'outlined'}
-              startIcon={<RadarIcon fontSize="small" />}
-              onClick={() => setShowControlled((prev) => !prev)}
-              sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 800, justifyContent: 'space-between' }}
+              <PolicyIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={showControlled ? `Hide controlled (${airspaceSummary?.controlled_airspace ?? 0})` : `Show controlled (${airspaceSummary?.controlled_airspace ?? 0})`} placement="left">
+            <IconButton
+              onClick={() => {
+                setShowControlled((prev) => !prev);
+                setMapControlsOpen(false);
+              }}
+              sx={{
+                width: 34,
+                height: 34,
+                bgcolor: showControlled ? '#dbeafe' : 'rgba(255,255,255,0.92)',
+                color: showControlled ? '#1d4ed8' : '#475569',
+                border: '1px solid rgba(148,163,184,0.18)',
+                boxShadow: '0 8px 18px rgba(15,23,42,0.12)',
+                '&:hover': { bgcolor: '#eff6ff' },
+              }}
             >
-              {showControlled ? 'Hide Controlled' : 'Show Controlled'}
-            </Button>
-            <Chip
-              label={`Controlled ${airspaceSummary?.controlled_airspace ?? 0}`}
-              size="small"
-              sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#93c5fd', fontWeight: 800 }}
-            />
-          </Stack>
-        </Paper>
-      )}
+              <RadarIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Stack>
 
       {/* Legend — bottom right */}
       <Paper sx={{

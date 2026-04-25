@@ -100,6 +100,57 @@ def test_create_analysis_starts_async_job(monkeypatch) -> None:
     assert response.json()["status"] == "running"
 
 
+def test_recalculate_analysis_reuses_existing_job(monkeypatch) -> None:
+    _as_user("expert")
+    monkeypatch.setattr(
+        analysis_repo,
+        "get_analysis",
+        lambda _analysis_id: {
+            "id": 99,
+            "user_id": 1,
+            "geodata_job_id": "job-1",
+            "status": "completed",
+            "criteria_weights": {"obstacle": 0.35, "transport": 0.25, "land_use": 0.2, "nfz": 0.2},
+        },
+    )
+    monkeypatch.setattr(
+        analysis_repo,
+        "get_geodata_job",
+        lambda _job_id: {
+            "job_id": "job-1",
+            "region_name": "Istanbul Test",
+            "status": "success",
+            "layer_counts": {},
+        },
+    )
+    monkeypatch.setattr(analysis_repo, "list_geodata_cells", lambda _job_id: ["8928308280fffff"])
+    monkeypatch.setattr(
+        analysis_repo,
+        "reset_analysis",
+        lambda _analysis_id, **_kwargs: {
+            "id": 99,
+            "status": "running",
+        },
+    )
+    monkeypatch.setattr(AnalysisService, "_start_worker", lambda *_args, **_kwargs: None)
+
+    response = client.post(
+        "/api/analysis/99/recalculate",
+        json={
+            "criteria_weights": {
+                "obstacle": 0.3,
+                "transport": 0.3,
+                "land_use": 0.2,
+                "nfz": 0.2,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["analysis_id"] == 99
+    assert response.json()["status"] == "running"
+
+
 def test_create_analysis_rejects_invalid_weights() -> None:
     _as_user("expert")
     response = client.post(
@@ -223,6 +274,51 @@ def test_get_analysis_heatmap(monkeypatch) -> None:
     assert response.json()["features"][0]["properties"]["mcdm_method"] == "AHP_TOPSIS"
 
 
+def test_get_analysis_cell_detail(monkeypatch) -> None:
+    _as_user("expert")
+    monkeypatch.setattr(analysis_repo, "get_analysis", lambda _analysis_id: {"id": 7, "status": "completed"})
+    monkeypatch.setattr(
+        analysis_repo,
+        "get_result_by_cell",
+        lambda _analysis_id, _cell_index, **_kwargs: {
+            "cell_index": "cell-1",
+            "suitability_score": 88.0,
+            "criteria_breakdown": {"criteria_scores": {"obstacle": 0.9, "transport": 0.8, "land_use": 0.8, "nfz": 1.0}},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[28.9, 41.0], [28.91, 41.0], [28.91, 41.01], [28.9, 41.0]]],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        analysis_repo,
+        "list_results",
+        lambda _analysis_id, **_kwargs: [
+            {"cell_index": "cell-x", "suitability_score": 91.0, "criteria_breakdown": {}},
+            {"cell_index": "cell-1", "suitability_score": 88.0, "criteria_breakdown": {}},
+        ],
+    )
+
+    response = client.get("/api/analysis/7/cells/cell-1")
+
+    assert response.status_code == 200
+    assert response.json()["analysis_id"] == 7
+    assert response.json()["cell_index"] == "cell-1"
+    assert response.json()["rank"] == 2
+    assert response.json()["score_class"] == "high"
+
+
+def test_get_analysis_cell_detail_returns_404_when_missing(monkeypatch) -> None:
+    _as_user("expert")
+    monkeypatch.setattr(analysis_repo, "get_analysis", lambda _analysis_id: {"id": 7, "status": "completed"})
+    monkeypatch.setattr(analysis_repo, "get_result_by_cell", lambda *_args, **_kwargs: None)
+
+    response = client.get("/api/analysis/7/cells/missing-cell")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "ANALYSIS_CELL_NOT_FOUND"
+
+
 def test_calculate_results_uses_topsis_breakdown() -> None:
     service = AnalysisService()
     rows = service._calculate_results(
@@ -267,3 +363,13 @@ def test_compare_analysis_candidates(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert [item["rank"] for item in response.json()["ranked_candidates"]] == [1, 2]
+
+
+def test_compare_requires_at_least_two_cells() -> None:
+    _as_user("expert")
+    response = client.post(
+        "/api/analysis/compare",
+        json={"analysis_id": 7, "cell_indexes": ["cell-a"]},
+    )
+
+    assert response.status_code == 422

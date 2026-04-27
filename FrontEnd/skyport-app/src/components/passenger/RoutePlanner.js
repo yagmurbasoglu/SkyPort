@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Box, Paper, Typography, Button, Divider, Autocomplete,
-  TextField, CircularProgress, Alert, Chip,
+  TextField, CircularProgress, Alert, Chip, Modal, Fade, Backdrop, IconButton
 } from '@mui/material';
 import FlightIcon from '@mui/icons-material/Flight';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
@@ -9,6 +9,9 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import StraightenIcon from '@mui/icons-material/Straighten';
 import PaymentIcon from '@mui/icons-material/Payment';
 import AirIcon from '@mui/icons-material/Air';
+import CloseIcon from '@mui/icons-material/Close';
+import QrCode2Icon from '@mui/icons-material/QrCode2';
+import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 import axios from 'axios';
 
 const autoSx = {
@@ -19,7 +22,7 @@ const autoSx = {
     fontSize: '0.82rem',
     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-    '&.Mui-focused fieldset': { borderColor: '#b65f70' },
+    '&.Mui-focused fieldset': { borderColor: '#e17b8f' },
   },
   '& .MuiInputLabel-root': { color: '#475569', fontFamily: 'Inter', fontSize: '0.82rem' },
   '& .MuiInputBase-input': { color: '#e2e8f0', fontFamily: 'Inter', fontSize: '0.82rem' },
@@ -106,9 +109,10 @@ const obstacleDataCopy = (route) => {
 const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
-  const [route, setRoute] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [route, setRoute] = useState(null);
   const [error, setError] = useState('');
+  const [showBoardingPass, setShowBoardingPass] = useState(false);
 
   const handleSwap = () => {
     setFrom(to);
@@ -170,9 +174,9 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
     <Paper
       sx={{
         position: 'absolute',
-        top: { xs: 72, md: '50%' },
-        left: 16,
-        transform: { xs: 'none', md: 'translateY(-50%)' },
+        top: '50%',
+        left: 24,
+        transform: 'translateY(-50%)',
         zIndex: 10,
         pointerEvents: 'auto',
         width: { xs: 'calc(100vw - 48px)', sm: 320 },
@@ -188,7 +192,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
     >
       {/* Header */}
       <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 1 }}>
-        <FlightIcon sx={{ fontSize: 16, color: '#b65f70' }} />
+        <FlightIcon sx={{ fontSize: 16, color: '#e17b8f' }} />
         <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           Route Planner
         </Typography>
@@ -206,7 +210,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
             <TextField {...params} label="From" placeholder="Select departure" sx={autoSx} />
           )}
           renderOption={(props, vp) => (
-            <Box component="li" {...props} sx={{ fontSize: '0.8rem', color: '#e2e8f0', '&:hover': { background: 'rgba(182,95,112,0.1)' } }}>
+            <Box component="li" {...props} sx={{ fontSize: '0.8rem', color: '#e2e8f0', '&:hover': { background: 'rgba(225,123,143,0.1)' } }}>
               <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                 <Typography sx={{ fontSize: '0.8rem', color: '#e2e8f0' }}>{vp.name}</Typography>
                 <Typography sx={{ fontSize: '0.65rem', color: '#475569' }}>{vp.distanceFromCenter} km from center</Typography>
@@ -229,7 +233,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
               minWidth: 32, width: 32, height: 32, p: 0, borderRadius: '50%',
               color: '#475569', border: '1px solid rgba(255,255,255,0.1)',
               background: 'rgba(255,255,255,0.04)',
-              '&:hover': { color: '#e2e8f0', background: 'rgba(182,95,112,0.1)' },
+              '&:hover': { color: '#e2e8f0', background: 'rgba(225,123,143,0.1)' },
             }}
           >
             <SwapVertIcon sx={{ fontSize: 16 }} />
@@ -247,7 +251,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
             <TextField {...params} label="To" placeholder="Select arrival" sx={autoSx} />
           )}
           renderOption={(props, vp) => (
-            <Box component="li" {...props} sx={{ fontSize: '0.8rem', color: '#e2e8f0', '&:hover': { background: 'rgba(182,95,112,0.1)' } }}>
+            <Box component="li" {...props} sx={{ fontSize: '0.8rem', color: '#e2e8f0', '&:hover': { background: 'rgba(225,123,143,0.1)' } }}>
               <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                 <Typography sx={{ fontSize: '0.8rem', color: '#e2e8f0' }}>{vp.name}</Typography>
                 <Typography sx={{ fontSize: '0.65rem', color: '#475569' }}>{vp.distanceFromCenter} km from center</Typography>
@@ -270,7 +274,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
           sx={{
             mt: 2, py: 1.1, textTransform: 'none', fontWeight: 700,
             fontSize: '0.85rem', fontFamily: 'Inter',
-            background: 'linear-gradient(135deg, #b65f70, #6d28d9)',
+            background: 'linear-gradient(135deg, #e17b8f, #6d28d9)',
             boxShadow: '0 4px 14px rgba(139,92,246,0.3)',
             '&:hover': { boxShadow: '0 4px 20px rgba(139,92,246,0.45)' },
             '&:disabled': { opacity: 0.4 },
@@ -329,7 +333,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
               <Box sx={{ mt: 1.5, background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)', p: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.8 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
-                    <AirIcon sx={{ fontSize: 14, color: '#b65f70' }} />
+                    <AirIcon sx={{ fontSize: 14, color: '#e17b8f' }} />
                     <Typography sx={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       Weather
                     </Typography>
@@ -383,6 +387,29 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
               </Button>
             )}
 
+            {route.is_safe && (
+              <Button
+                fullWidth
+                onClick={() => setShowBoardingPass(true)}
+                sx={{
+                  mt: 2,
+                  textTransform: 'uppercase',
+                  fontWeight: 800,
+                  fontSize: '0.8rem',
+                  letterSpacing: '0.1em',
+                  color: '#fff',
+                  background: 'linear-gradient(45deg, #e17b8f, #f43f5e)',
+                  boxShadow: '0 4px 14px rgba(225,123,143,0.4)',
+                  '&:hover': {
+                    background: 'linear-gradient(45deg, #f43f5e, #e17b8f)',
+                    boxShadow: '0 6px 20px rgba(225,123,143,0.6)',
+                  }
+                }}
+              >
+                Book Flight
+              </Button>
+            )}
+
             <Button
               fullWidth size="small"
               onClick={handleClear}
@@ -397,6 +424,87 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
           </>
         )}
       </Box>
+
+      {/* ── Futuristic Boarding Pass Modal ── */}
+      <Modal
+        open={showBoardingPass}
+        onClose={() => setShowBoardingPass(false)}
+        closeAfterTransition
+        BackdropComponent={Backdrop}
+        BackdropProps={{ timeout: 500, sx: { backdropFilter: 'blur(8px)' } }}
+      >
+        <Fade in={showBoardingPass}>
+          <Box sx={{
+            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            width: 320, background: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(32px) saturate(200%)',
+            border: '1px solid rgba(225, 123, 143, 0.3)',
+            borderRadius: '24px', boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+            overflow: 'hidden', p: 0, outline: 'none'
+          }}>
+            {/* Header */}
+            <Box sx={{ background: 'linear-gradient(135deg, #e17b8f, #be123c)', p: 3, position: 'relative' }}>
+              <IconButton onClick={() => setShowBoardingPass(false)} sx={{ position: 'absolute', top: 8, right: 8, color: '#fff' }}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+              <Typography sx={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600, opacity: 0.8, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                SkyPort Boarding Pass
+              </Typography>
+              <Typography sx={{ color: '#fff', fontSize: '1.4rem', fontWeight: 800, mt: 0.5 }}>
+                First Class
+              </Typography>
+            </Box>
+            
+            {/* Body */}
+            <Box sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase' }}>From</Typography>
+                  <Typography sx={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 700 }} noWrap>{route?.from_point?.name || 'Origin'}</Typography>
+                </Box>
+                <FlightIcon sx={{ color: '#e17b8f', transform: 'rotate(90deg)', opacity: 0.5, mt: 1, mx: 1, flexShrink: 0 }} />
+                <Box sx={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+                  <Typography sx={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase' }}>To</Typography>
+                  <Typography sx={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 700 }} noWrap>{route?.to_point?.name || 'Destination'}</Typography>
+                </Box>
+              </Box>
+              
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)', borderStyle: 'dashed', my: 2 }} />
+              
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                <Box>
+                  <Typography sx={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase' }}>Flight</Typography>
+                  <Typography sx={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 700 }}>SP-{Math.floor(Math.random() * 900) + 100}</Typography>
+                </Box>
+                <Box>
+                  <Typography sx={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase' }}>Gate</Typography>
+                  <Typography sx={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 700 }}>04</Typography>
+                </Box>
+                <Box>
+                  <Typography sx={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase' }}>Boarding</Typography>
+                  <Typography sx={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 700 }}>10 Min</Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, background: 'rgba(34, 197, 94, 0.1)', p: 1.5, borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
+                <WorkspacePremiumIcon sx={{ color: '#4ade80', fontSize: 18 }} />
+                <Typography sx={{ color: '#4ade80', fontSize: '0.7rem', fontWeight: 600 }}>
+                  Zero Emission Flight - 4.2kg CO₂ Saved
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* QR Code */}
+            <Box sx={{ background: 'rgba(255,255,255,0.02)', p: 3, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <QrCode2Icon sx={{ fontSize: 64, color: '#e17b8f', opacity: 0.9 }} />
+              <Typography sx={{ fontSize: '0.6rem', color: '#64748b', mt: 1, letterSpacing: '0.1em' }}>
+                SCAN AT HELIPAD
+              </Typography>
+            </Box>
+          </Box>
+        </Fade>
+      </Modal>
+
     </Paper>
   );
 };

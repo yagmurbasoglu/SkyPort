@@ -11,7 +11,12 @@ allow_authenticated = RoleChecker(["expert", "passenger"])
 
 @router.get("", response_model=list[VertiportResponse])
 def list_vertiports(
+    min_score: float | None = None,
+    max_price: float | None = None,
     current_user: User = Depends(allow_authenticated),
 ) -> list[VertiportResponse]:
     _ = current_user
-    return [VertiportResponse(**item) for item in list_active_vertiports()]
+    return [
+        VertiportResponse(**item)
+        for item in list_active_vertiports(min_score=min_score, max_price=max_price)
+    ]

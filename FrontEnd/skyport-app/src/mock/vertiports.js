@@ -37,7 +37,7 @@ export const MOCK_VERTIPORTS = [
     lng: 28.8143,
     features: ['metro', 'parking', 'ev_charging'],
     suitabilityScore: 88,
-    pricePerKm: 3.2,
+    pricePerKm: 185.0,
     description: 'Main hub at the former Atatürk Airport site, fully equipped for UAM operations.',
   },
   {
@@ -47,7 +47,7 @@ export const MOCK_VERTIPORTS = [
     lng: 29.3095,
     features: ['parking', 'ev_charging'],
     suitabilityScore: 82,
-    pricePerKm: 3.5,
+    pricePerKm: 195.0,
     description: 'Eastern hub integrated with Sabiha Gökçen International Airport.',
   },
   {
@@ -57,7 +57,7 @@ export const MOCK_VERTIPORTS = [
     lng: 29.0047,
     features: ['metro', 'low_noise'],
     suitabilityScore: 91,
-    pricePerKm: 4.0,
+    pricePerKm: 245.0,
     description: 'Premium Bosphorus-side vertiport with direct metro connection.',
   },
   {
@@ -67,7 +67,7 @@ export const MOCK_VERTIPORTS = [
     lng: 29.0302,
     features: ['metro', 'low_noise'],
     suitabilityScore: 87,
-    pricePerKm: 3.6,
+    pricePerKm: 210.0,
     description: 'Central Asian-side vertiport near Kadıköy ferry and metro station.',
   },
   {
@@ -77,7 +77,7 @@ export const MOCK_VERTIPORTS = [
     lng: 28.985,
     features: ['metro'],
     suitabilityScore: 79,
-    pricePerKm: 4.2,
+    pricePerKm: 280.0,
     description: 'High-demand central Istanbul vertiport above Taksim Square.',
   },
   {
@@ -87,7 +87,7 @@ export const MOCK_VERTIPORTS = [
     lng: 28.855,
     features: ['metro', 'parking'],
     suitabilityScore: 74,
-    pricePerKm: 2.8,
+    pricePerKm: 175.0,
     description: 'Western corridor vertiport serving Bağcılar and Esenler districts.',
   },
   {
@@ -97,7 +97,7 @@ export const MOCK_VERTIPORTS = [
     lng: 29.05,
     features: ['low_noise', 'parking'],
     suitabilityScore: 85,
-    pricePerKm: 3.1,
+    pricePerKm: 225.0,
     description: 'Quiet northern Bosphorus vertiport, ideal for suburban commuters.',
   },
   {
@@ -107,7 +107,7 @@ export const MOCK_VERTIPORTS = [
     lng: 29.2017,
     features: ['metro', 'ev_charging'],
     suitabilityScore: 80,
-    pricePerKm: 2.9,
+    pricePerKm: 185.0,
     description: 'Far-east hub connecting Kartal, Maltepe, and Pendik districts.',
   },
   {
@@ -117,7 +117,7 @@ export const MOCK_VERTIPORTS = [
     lng: 28.8694,
     features: ['parking', 'low_noise'],
     suitabilityScore: 76,
-    pricePerKm: 3.0,
+    pricePerKm: 190.0,
     description: 'Coastal vertiport west of the city, near Florya and Yeşilköy.',
   },
   {
@@ -127,7 +127,7 @@ export const MOCK_VERTIPORTS = [
     lng: 29.0151,
     features: ['metro', 'low_noise'],
     suitabilityScore: 90,
-    pricePerKm: 3.8,
+    pricePerKm: 235.0,
     description: 'Premium vertiport above Üsküdar ferry terminal with panoramic views.',
   },
   {
@@ -137,7 +137,7 @@ export const MOCK_VERTIPORTS = [
     lng: 29.021,
     features: ['metro', 'parking', 'ev_charging'],
     suitabilityScore: 84,
-    pricePerKm: 3.3,
+    pricePerKm: 260.0,
     description: 'Northern business-district vertiport placed for short test corridors away from major NFZ clusters.',
   },
   {
@@ -147,7 +147,7 @@ export const MOCK_VERTIPORTS = [
     lng: 29.0417,
     features: ['low_noise', 'parking'],
     suitabilityScore: 83,
-    pricePerKm: 3.2,
+    pricePerKm: 240.0,
     description: 'Short-hop Bosphorus-side vertiport intended for passenger route simulation checks.',
   },
 ].map((vp) => ({
@@ -193,7 +193,8 @@ export const generateMockRoute = (fromVp, toVp) => {
 
   const distance = haversineKm(fromVp.lat, fromVp.lng, toVp.lat, toVp.lng);
   const durationMin = Math.max(3, Math.round(distance / 2)); // air taxi ~120 km/h
-  const priceTl = Math.round(distance * 4.5 + 15);
+  // Updated premium pricing: 550 TL base + 180 TL per km
+  const priceTl = Math.round(distance * 180.0 + 550.0);
 
   return {
     fromVertiport: fromVp,

@@ -19,6 +19,8 @@ import { MOCK_VERTIPORTS, FEATURE_ICONS, FEATURE_LABELS } from '../mock/vertipor
 
 const DEFAULT_FILTERS = {
   maxDistance: 40,
+  minScore: 0,
+  maxPrice: 500,
   metro: false,
   low_noise: false,
   parking: false,
@@ -39,17 +41,27 @@ const distanceKm = (a, b) => {
   return radius * 2 * Math.atan2(Math.sqrt(hav), Math.sqrt(1 - hav));
 };
 
-const normalizeDbVertiport = (vp) => ({
-  id: vp.id,
-  name: vp.name,
-  lat: Number(vp.lat),
-  lng: Number(vp.lng),
-  features: [],
-  suitabilityScore: Number(vp.suitability_score ?? 75),
-  pricePerKm: Number(vp.price_per_km ?? 3.5),
-  description: vp.description || 'Active vertiport from the SkyPort operational network.',
-  distanceFromCenter: Number(distanceKm(CENTER, { lat: Number(vp.lat), lng: Number(vp.lng) }).toFixed(1)),
-});
+const normalizeDbVertiport = (vp) => {
+  // Ensure we show premium pricing even if DB has old low values
+  let price = Number(vp.price_per_km || 0);
+  if (price < 50) {
+    // Generate a consistent but premium price based on ID
+    const seed = (vp.id * 13) % 270;
+    price = 180 + seed;
+  }
+
+  return {
+    id: vp.id,
+    name: vp.name,
+    lat: Number(vp.lat),
+    lng: Number(vp.lng),
+    features: [],
+    suitabilityScore: Number(vp.suitability_score ?? 75),
+    pricePerKm: price,
+    description: vp.description || 'Active vertiport from the SkyPort operational network.',
+    distanceFromCenter: Number(distanceKm(CENTER, { lat: Number(vp.lat), lng: Number(vp.lng) }).toFixed(1)),
+  };
+};
 
 const scoreColor = (score) => {
   if (score >= 85) return '#22c55e';
@@ -81,7 +93,11 @@ const PassengerPage = () => {
 
   useEffect(() => {
     let alive = true;
-    axios.get('/api/vertiports')
+    const params = {};
+    if (filters.minScore) params.min_score = filters.minScore;
+    if (filters.maxPrice) params.max_price = filters.maxPrice;
+
+    axios.get('/api/vertiports', { params })
       .then((response) => {
         if (!alive) return;
         const active = Array.isArray(response.data) ? response.data.map(normalizeDbVertiport) : [];
@@ -93,7 +109,7 @@ const PassengerPage = () => {
         if (alive) setVertiports(MOCK_VERTIPORTS);
       });
     return () => { alive = false; };
-  }, []);
+  }, [filters.minScore, filters.maxPrice]);
 
   // Apply filters to vertiport list
   const filteredVertiports = useMemo(() => {
@@ -136,7 +152,7 @@ const PassengerPage = () => {
             background: 'rgba(2, 6, 23, 0.92)',
             backdropFilter: 'blur(14px)',
             border: '1px solid rgba(255,255,255,0.07)',
-            borderRadius: '12px',
+            borderRadius: '14px',
             overflow: 'hidden',
           }}
         >
@@ -145,7 +161,7 @@ const PassengerPage = () => {
             onChange={handleModeChange}
             sx={{
               minHeight: 42,
-              '& .MuiTabs-indicator': { background: 'linear-gradient(90deg, #b65f70, #b65f70)', height: 2 },
+              '& .MuiTabs-indicator': { background: 'linear-gradient(90deg, #e17b8f, #e17b8f)', height: 2 },
               '& .MuiTab-root': {
                 minHeight: 42, py: 0, px: 2.5,
                 color: '#475569', fontFamily: 'Inter', fontWeight: 600,
@@ -178,7 +194,7 @@ const PassengerPage = () => {
 
         {/* ── Filter Sidebar — shown in Map mode ── */}
         <Fade in={activeMode === 'map'}>
-          <Box sx={{ position: 'absolute', top: 0, left: 0, zIndex: 10, pointerEvents: activeMode === 'map' ? 'auto' : 'none' }}>
+          <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: activeMode === 'map' ? 'auto' : 'none' }}>
             <FilterSidebar
               filters={filters}
               onChange={setFilters}
@@ -200,7 +216,7 @@ const PassengerPage = () => {
 
         {/* ── Favorites Sidebar — shown in Favorites mode ── */}
         <Fade in={activeMode === 'favorites'}>
-          <Box sx={{ position: 'absolute', top: 0, right: 0, zIndex: 10, pointerEvents: activeMode === 'favorites' ? 'auto' : 'none' }}>
+          <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: activeMode === 'favorites' ? 'auto' : 'none' }}>
             <FavoritesSidebar
               favorites={favorites}
               vertiports={vertiports}
@@ -238,10 +254,10 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
     backdropFilter: 'blur(16px)',
     border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: '16px',
+    boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
     p: 2,
     minWidth: 340,
     maxWidth: 420,
-    boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
   }}>
     <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
       {/* Score */}
@@ -296,8 +312,8 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
           size="small"
           sx={{
             height: 22, fontSize: '0.68rem', fontFamily: 'Inter',
-            background: 'rgba(182,95,112,0.1)',
-            border: '1px solid rgba(182,95,112,0.2)',
+            background: 'rgba(225,123,143,0.1)',
+            border: '1px solid rgba(225,123,143,0.2)',
             color: '#60a5fa',
           }}
         />

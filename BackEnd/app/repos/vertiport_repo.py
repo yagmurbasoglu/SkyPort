@@ -5,9 +5,11 @@ from sqlalchemy import text
 from app.db.session import SessionLocal
 
 
-def list_active_vertiports() -> list[dict[str, Any]]:
-    query = text(
-        """
+def list_active_vertiports(
+    min_score: float | None = None,
+    max_price: float | None = None,
+) -> list[dict[str, Any]]:
+    query_str = """
         SELECT
             id,
             name,
@@ -19,11 +21,20 @@ def list_active_vertiports() -> list[dict[str, Any]]:
             is_active
         FROM public.vertiports
         WHERE is_active = true
-        ORDER BY COALESCE(suitability_score, 0) DESC, name ASC
-        """
-    )
+    """
+    params = {}
+    if min_score is not None:
+        query_str += " AND suitability_score >= :min_score"
+        params["min_score"] = min_score
+    if max_price is not None:
+        query_str += " AND price_per_km <= :max_price"
+        params["max_price"] = max_price
+
+    query_str += " ORDER BY COALESCE(suitability_score, 0) DESC, name ASC"
+    query = text(query_str)
+
     with SessionLocal() as db:
-        rows = db.execute(query).mappings()
+        rows = db.execute(query, params).mappings()
         return [
             {
                 "id": int(row["id"]),

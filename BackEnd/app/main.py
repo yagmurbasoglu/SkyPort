@@ -9,6 +9,7 @@ from app.api.geodata import router as geodata_router
 from app.api.health import router as health_router
 from app.api.routes.analysis import router as analysis_router
 from app.api.routes.geodata import router as geodata_tools_router
+from app.api.routes.favorites import router as favorites_router
 from app.api.routes.route import router as route_router
 from app.api.routes.vertiports import router as vertiports_router
 from app.api.routes import auth, users
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(analysis_router, prefix="/api/analysis", tags=["analysis"])
     app.include_router(route_router, prefix="/api/route", tags=["route"])
     app.include_router(vertiports_router, prefix="/api/vertiports", tags=["vertiports"])
+    app.include_router(favorites_router, prefix="/api/favorites", tags=["favorites"])
 
     @app.get("/", tags=["system"])
     async def root() -> dict[str, str]:

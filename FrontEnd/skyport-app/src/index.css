@@ -41,3 +41,17 @@ body {
 .mapboxgl-ctrl-attrib a {
   color: rgba(59, 130, 246, 0.8) !important;
 }
+
+/* Custom Mapbox Popup for SkyPort Passenger Hover */
+.vp-hover-popup .mapboxgl-popup-content {
+  background: rgba(11, 15, 25, 0.95);
+  border: 1px solid rgba(225, 123, 143, 0.4);
+  box-shadow: 0 4px 16px rgba(225, 123, 143, 0.15);
+  border-radius: 8px;
+  color: #f8fafc;
+  padding: 8px 12px;
+}
+.vp-hover-popup .mapboxgl-popup-tip {
+  border-top-color: rgba(11, 15, 25, 0.95) !important;
+  border-bottom-color: rgba(11, 15, 25, 0.95) !important;
+}

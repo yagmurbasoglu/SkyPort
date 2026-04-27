@@ -9,26 +9,31 @@ const FEATURE_KEYS = Object.keys(FEATURE_LABELS);
 
 const FilterSidebar = ({ filters, onChange, resultCount }) => {
   const handleDistanceChange = (_, value) => onChange({ ...filters, maxDistance: value });
+  const handleScoreChange = (_, value) => onChange({ ...filters, minScore: value });
+  const handlePriceChange = (_, value) => onChange({ ...filters, maxPrice: value });
   const handleFeatureToggle = (key) => onChange({ ...filters, [key]: !filters[key] });
 
   return (
     <Paper
       sx={{
         position: 'absolute',
-        top: 72,
-        left: 16,
+        top: '50%',
+        left: 24,
+        transform: 'translateY(-50%)',
         zIndex: 10,
-        width: 240,
+        pointerEvents: 'auto',
+        width: { xs: 'calc(100vw - 48px)', sm: 280 },
         background: 'rgba(2, 6, 23, 0.92)',
         backdropFilter: 'blur(14px)',
         border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: '14px',
-        overflow: 'hidden',
+        maxHeight: { xs: 'calc(100vh - 96px)', md: 'calc(100vh - 180px)' },
+        overflowY: 'auto',
       }}
     >
       {/* Header */}
       <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <FilterListIcon sx={{ fontSize: 16, color: '#b65f70' }} />
+        <FilterListIcon sx={{ fontSize: 16, color: '#e17b8f' }} />
         <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           Filters
         </Typography>
@@ -37,8 +42,8 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
           size="small"
           sx={{
             ml: 'auto', height: 18, fontSize: '0.6rem',
-            background: 'rgba(182,95,112,0.15)',
-            border: '1px solid rgba(182,95,112,0.25)',
+            background: 'rgba(225,123,143,0.15)',
+            border: '1px solid rgba(225,123,143,0.25)',
             color: '#60a5fa',
           }}
         />
@@ -59,13 +64,67 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
           max={40}
           step={1}
           sx={{
-            color: '#b65f70',
-            '& .MuiSlider-track': { background: 'linear-gradient(90deg, #b65f70, #60a5fa)' },
+            color: '#e17b8f',
+            '& .MuiSlider-track': { background: 'linear-gradient(90deg, #e17b8f, #60a5fa)' },
             '& .MuiSlider-thumb': {
               width: 14, height: 14,
-              border: '2px solid #b65f70',
+              border: '2px solid #e17b8f',
               background: '#fff',
-              '&:hover': { boxShadow: '0 0 0 6px rgba(182,95,112,0.2)' },
+              '&:hover': { boxShadow: '0 0 0 6px rgba(225,123,143,0.2)' },
+            },
+            '& .MuiSlider-rail': { background: 'rgba(255,255,255,0.1)' },
+          }}
+        />
+
+        <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
+
+        {/* Suitability Score Slider */}
+        <Typography sx={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, mb: 0.5 }}>
+          Min Suitability Score
+        </Typography>
+        <Typography sx={{ fontSize: '1rem', fontWeight: 800, color: '#e2e8f0', mb: 1 }}>
+          {filters.minScore} <span style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 400 }}>+</span>
+        </Typography>
+        <Slider
+          value={filters.minScore || 0}
+          onChange={handleScoreChange}
+          min={0}
+          max={100}
+          step={5}
+          sx={{
+            color: '#22c55e',
+            '& .MuiSlider-track': { background: 'linear-gradient(90deg, #22c55e, #10b981)' },
+            '& .MuiSlider-thumb': {
+              width: 14, height: 14,
+              border: '2px solid #22c55e',
+              background: '#fff',
+            },
+            '& .MuiSlider-rail': { background: 'rgba(255,255,255,0.1)' },
+          }}
+        />
+
+        <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
+
+        {/* Price Slider */}
+        <Typography sx={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, mb: 0.5 }}>
+          Max Price (₺/km)
+        </Typography>
+        <Typography sx={{ fontSize: '1rem', fontWeight: 800, color: '#e2e8f0', mb: 1 }}>
+          {filters.maxPrice} <span style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 400 }}>₺</span>
+        </Typography>
+        <Slider
+          value={filters.maxPrice || 1000}
+          onChange={handlePriceChange}
+          min={1}
+          max={1000}
+          step={10}
+          sx={{
+            color: '#60a5fa',
+            '& .MuiSlider-track': { background: 'linear-gradient(90deg, #60a5fa, #3b82f6)' },
+            '& .MuiSlider-thumb': {
+              width: 14, height: 14,
+              border: '2px solid #60a5fa',
+              background: '#fff',
             },
             '& .MuiSlider-rail': { background: 'rgba(255,255,255,0.1)' },
           }}
@@ -86,8 +145,8 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
                 display: 'flex', alignItems: 'center', gap: 1,
                 px: 1.5, py: 0.8, borderRadius: 1.5, cursor: 'pointer',
                 transition: 'all 0.15s',
-                background: filters[key] ? 'rgba(182,95,112,0.12)' : 'rgba(255,255,255,0.03)',
-                border: filters[key] ? '1px solid rgba(182,95,112,0.3)' : '1px solid transparent',
+                background: filters[key] ? 'rgba(225,123,143,0.12)' : 'rgba(255,255,255,0.03)',
+                border: filters[key] ? '1px solid rgba(225,123,143,0.3)' : '1px solid transparent',
                 '&:hover': { background: 'rgba(255,255,255,0.06)' },
               }}
             >
@@ -99,7 +158,7 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
                 sx={{
                   width: 14, height: 14, borderRadius: '4px',
                   border: filters[key] ? 'none' : '1.5px solid rgba(255,255,255,0.2)',
-                  background: filters[key] ? '#b65f70' : 'transparent',
+                  background: filters[key] ? '#e17b8f' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'all 0.15s',
                 }}

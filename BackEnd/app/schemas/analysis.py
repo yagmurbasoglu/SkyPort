@@ -78,3 +78,23 @@ class AnalysisCompareRequest(BaseModel):
 class AnalysisCompareResponse(BaseModel):
     analysis_id: int
     ranked_candidates: list[CandidateResult]
+
+
+class AnalysisHistoryItem(BaseModel):
+    analysis_id: int
+    region_name: str | None
+    status: AnalysisStatus
+    created_at: datetime
+    suitability_score: float | None = None
+
+
+class AnalysisHistoryResponse(BaseModel):
+    items: list[AnalysisHistoryItem]
+
+
+class AnalysisExportResponse(BaseModel):
+    analysis_id: int
+    format: str
+    download_url: str | None = None
+    geojson: dict | None = None
+    report: dict | None = None

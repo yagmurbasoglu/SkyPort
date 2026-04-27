@@ -12,8 +12,9 @@ const FavoritesSidebar = ({ favorites, vertiports = [], onToggle, onFlyTo }) => 
     <Paper
       sx={{
         position: 'absolute',
-        top: 72,
-        right: 16,
+        top: '50%',
+        right: 24,
+        transform: 'translateY(-50%)',
         zIndex: 10,
         width: 250,
         background: 'rgba(2, 6, 23, 0.92)',

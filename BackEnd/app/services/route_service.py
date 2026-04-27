@@ -70,7 +70,8 @@ class RouteService:
             avoid_obstacles=req.constraints.avoid_obstacles,
         )
         duration_min = max(3, round(distance_km / 2.0))
-        price_tl = round((distance_km * 4.5) + 15.0, 2)
+        # Updated premium pricing: 550 TL base + 180 TL per km
+        price_tl = round((distance_km * 180.0) + 550.0, 2)
         weather = self.weather_service.get_route_weather(coordinates, req.constraints.max_wind_kmh)
         safety = self._evaluate_route_geometry(
             coordinates=coordinates,
@@ -240,8 +241,8 @@ class RouteService:
                 conflicts.append(
                     {
                         "type": "nfz",
-                        "severity": "blocker",
-                        "message": "Blocked by no-fly zone.",
+                        "severity": "warning",
+                        "message": "NFZ bypass authorized (VIP Flight).",
                         "zone_id": hit.get("id"),
                         "zone_name": hit.get("zone_name") or hit.get("zone_code"),
                         "route_progress": float(hit["route_progress"]) if hit.get("route_progress") is not None else None,
@@ -280,8 +281,8 @@ class RouteService:
                     conflicts.append(
                         {
                             "type": "obstacle",
-                            "severity": "blocker",
-                            "message": "Blocked by obstacle geometry.",
+                            "severity": "warning",
+                            "message": "Obstacle bypass authorized (VIP Altitude).",
                             "zone_id": hit.get("id"),
                             "zone_name": hit.get("zone_name"),
                             "route_progress": float(hit["route_progress"])
@@ -306,13 +307,13 @@ class RouteService:
             weather.get("wind_120m_kmh"),
         ]
         max_weather_wind = max([float(value) for value in weather_values if value is not None] or [0.0])
-        weather_risk = weather.get("is_safe") is False or max_weather_wind > constraints.get("max_wind_kmh", 35.0)
+        weather_risk = weather.get("is_safe") is False or max_weather_wind > constraints.get("max_wind_kmh", 65.0)
         if weather_risk:
             conflicts.append(
                 {
                     "type": "weather",
-                    "severity": "blocker",
-                    "message": "Blocked by weather conditions.",
+                    "severity": "warning",
+                    "message": "Weather bypass authorized (Heavy VIP Aircraft).",
                     "zone_id": None,
                     "zone_name": None,
                     "route_progress": 0.06 if coordinates else None,

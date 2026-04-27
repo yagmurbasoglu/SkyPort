@@ -192,3 +192,9 @@ def summarize_results(analysis_id: int) -> dict[str, Any]:
             "max_score": float(row[2]) if row[2] is not None else None,
             "min_score": float(row[3]) if row[3] is not None else None,
         }
+
+
+def list_user_analyses(user_id: int) -> list[dict[str, Any]]:
+    with SessionLocal() as db:
+        stmt = select(Analysis).where(Analysis.user_id == user_id).order_by(Analysis.created_at.desc())
+        return [_analysis_to_dict(row) for row in db.execute(stmt).scalars().all()]

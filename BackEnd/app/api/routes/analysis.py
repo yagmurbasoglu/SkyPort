@@ -13,6 +13,8 @@ from app.schemas.analysis import (
     AnalysisRecalculateRequest,
     AnalysisResultResponse,
     AnalysisStatusResponse,
+    AnalysisHistoryResponse,
+    AnalysisExportResponse,
 )
 from app.services.analysis_service import AnalysisService
 
@@ -100,6 +102,30 @@ def get_analysis_cell_detail(
 ) -> AnalysisCellDetailResponse:
     result = AnalysisService().get_cell_detail(analysis_id, cell_index)
     return AnalysisCellDetailResponse(**result)
+
+
+@router.get("/history", response_model=AnalysisHistoryResponse)
+def get_analysis_history(
+    current_user: User = Depends(allow_expert),
+) -> AnalysisHistoryResponse:
+    """
+    List all past analyses for the current expert.
+    """
+    result = AnalysisService().get_user_history(current_user.id)
+    return AnalysisHistoryResponse(**result)
+
+
+@router.get("/{analysis_id}/export", response_model=AnalysisExportResponse)
+def export_analysis(
+    analysis_id: int,
+    format: str = "geojson",
+    current_user: User = Depends(allow_expert),
+) -> AnalysisExportResponse:
+    """
+    Export analysis results as GeoJSON or PDF report data.
+    """
+    result = AnalysisService().export_results(analysis_id, format)
+    return AnalysisExportResponse(**result)
 
 
 @router.post("/compare", response_model=AnalysisCompareResponse)

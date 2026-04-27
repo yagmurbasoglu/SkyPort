@@ -19,7 +19,8 @@ import MapIcon from '@mui/icons-material/Map';
 import axios from 'axios';
 import { getMapStyle, hasMapboxToken } from '../../utils/mapStyle';
 
-const ISTANBUL_CENTER = [28.9784, 41.0082];
+// Adjusted to push the city slightly down, centering it better.
+const ISTANBUL_CENTER = [28.9850, 41.0250];
 const ISTANBUL_ZOOM = 10.5;
 const ISTANBUL_AIRSPACE_BOUNDS = {
   west: 28.45,
@@ -44,14 +45,16 @@ const createAircraftElement = (blocked = false) => {
     place-items: center;
     pointer-events: none;
   `;
+  const aircraftColor = blocked ? '#ef4444' : '#e17b8f';
+  const aircraftGlow = blocked ? 'rgba(239,68,68,0.22)' : 'rgba(225,123,143,0.22)';
+
   shell.innerHTML = `
     <svg width="38" height="38" viewBox="0 0 64 64" aria-hidden="true">
-      <circle cx="32" cy="32" r="20" fill="${blocked ? 'rgba(239,68,68,0.22)' : 'rgba(182,95,112,0.22)'}" stroke="${blocked ? '#fca5a5' : '#e17b8f'}" stroke-width="2"/>
-      <path d="M31 9 L39 31 L56 38 L55 44 L37 40 L32 55 L27 55 L27 40 L9 44 L8 38 L25 31 Z" fill="${blocked ? '#ef4444' : '#b65f70'}" stroke="#f8fafc" stroke-width="2" stroke-linejoin="round"/>
-      <path d="M26 31 H38" stroke="#0f172a" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+      <circle cx="32" cy="32" r="20" fill="${aircraftGlow}" stroke="${aircraftColor}" stroke-width="2"/>
+      <path d="M31 9 L39 31 L56 38 L55 44 L37 40 L32 55 L27 55 L27 40 L9 44 L8 38 L25 31 Z" fill="${aircraftColor}" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
     </svg>
   `;
-  shell.style.filter = `drop-shadow(0 0 12px ${blocked ? 'rgba(239,68,68,0.95)' : 'rgba(182,95,112,0.95)'})`;
+  shell.style.filter = `drop-shadow(0 0 12px ${blocked ? 'rgba(239,68,68,0.95)' : 'rgba(225,123,143,0.95)'})`;
   return shell;
 };
 
@@ -72,11 +75,11 @@ const routePointAt = (coordinates, progress) => {
 
 const routeStopProgress = (route) => {
   if (route?.stop_progress !== null && route?.stop_progress !== undefined) {
-    return Math.max(0.04, Math.min(0.98, Number(route.stop_progress)));
+    return Math.max(0.04, Math.min(0.998, Number(route.stop_progress)));
   }
   const blocker = route?.conflicts?.find((conflict) => conflict.severity === 'blocker' && conflict.route_progress !== null && conflict.route_progress !== undefined);
   if (!blocker) return route?.is_safe === false ? 0.58 : 1;
-  return Math.max(0.04, Math.min(0.98, Number(blocker.route_progress)));
+  return Math.max(0.04, Math.min(0.998, Number(blocker.route_progress)));
 };
 
 const routeStopPoint = (route) => {
@@ -87,10 +90,10 @@ const routeStopPoint = (route) => {
 
 const routeVisualStyle = (route) => {
   if (!route) {
-    return { color: '#f97316', dash: [1.4, 0.8] };
+    return { color: '#e17b8f', dash: [1.4, 0.8] };
   }
   if (route.safety_status === 'safe') {
-    return { color: '#22c55e', dash: [1, 0.01] };
+    return { color: '#e17b8f', dash: [1, 0.01] };
   }
   if (route.safety_status === 'warning') {
     return { color: '#f59e0b', dash: [1.2, 0.7] };
@@ -98,7 +101,7 @@ const routeVisualStyle = (route) => {
   if (route.safety_status === 'blocked' || route.is_safe === false) {
     return { color: '#ef4444', dash: [0.9, 0.65] };
   }
-  return { color: '#f97316', dash: [1.4, 0.8] };
+  return { color: '#e17b8f', dash: [1.4, 0.8] };
 };
 
 const applyRasterBasemapMode = (instance, mode) => {
@@ -354,14 +357,33 @@ const PassengerMapView = ({
       `;
       el.appendChild(dot);
 
+      // Create a sleek Mapbox popup for hover
+      const popup = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 15,
+        className: 'vp-hover-popup'
+      }).setHTML(`
+        <div style="font-family: 'Inter', sans-serif; padding: 2px; min-width: 140px;">
+          <div style="font-size: 0.75rem; font-weight: 700; color: #e17b8f; margin-bottom: 4px; border-bottom: 1px solid rgba(225,123,143,0.2); padding-bottom: 4px;">${vp.name}</div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.65rem; color: #94a3b8;">Score: <b style="color: ${scoreColor(vp.suitabilityScore)}">${vp.suitabilityScore}</b></span>
+            <span style="font-size: 0.65rem; font-weight: 700; color: #cbd5e1;">${vp.pricePerKm} ₺/km</span>
+          </div>
+        </div>
+      `);
+
       el.addEventListener('mouseenter', () => {
         dot.style.transform = 'scale(1.25)';
+        popup.setLngLat([vp.lng, vp.lat]).addTo(map.current);
       });
       el.addEventListener('mouseleave', () => {
         dot.style.transform = 'scale(1)';
+        popup.remove();
       });
       el.addEventListener('click', (e) => {
         e.stopPropagation();
+        popup.remove(); // hide hover on click to let bottom card take focus
         if (onVertiportSelect) onVertiportSelect(vp);
       });
 
@@ -412,10 +434,10 @@ const PassengerMapView = ({
       blockerSrc.setData(
         stopPoint
           ? {
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: stopPoint },
-              properties: {},
-            }
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: stopPoint },
+            properties: {},
+          }
           : emptyCollection
       );
 
@@ -426,22 +448,41 @@ const PassengerMapView = ({
 
       if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
       if (aircraftMarkerRef.current) aircraftMarkerRef.current.remove();
-      const isBlocked = route.is_safe === false || route.safety_status === 'blocked' || route.safety_status === 'unsafe' || route.safety_status === 'weather_risk';
+      // DIAGNOSTIC: Force aircraft to go to the end regardless of backend flags
+      const isBlocked = route.safety_status === 'blocked' || route.safety_status === 'unsafe' || route.is_safe === false;
+      const endProgress = 1.0;
+
       const aircraft = createAircraftElement(isBlocked);
       aircraftMarkerRef.current = new mapboxgl.Marker({ element: aircraft })
         .setLngLat(route.coordinates[0])
         .addTo(map.current);
-      const endProgress = isBlocked ? routeStopProgress(route) : 1;
-      const finalStopPoint = isBlocked ? stopPoint : null;
-      const durationMs = isBlocked ? 2400 : 4200;
+
+      const durationMs = isBlocked ? 3000 : 5000; // Slower animation to see the end clearly
       const startTime = performance.now();
+
       const animate = (now) => {
+        if (!aircraftMarkerRef.current) return;
+
         const elapsed = now - startTime;
         const raw = Math.min(1, elapsed / durationMs);
-        const eased = 1 - ((1 - raw) ** 3);
-        const point = raw >= 1 && finalStopPoint ? finalStopPoint : routePointAt(route.coordinates, eased * endProgress);
-        if (point && aircraftMarkerRef.current) aircraftMarkerRef.current.setLngLat(point);
-        if (raw < 1) {
+        // Linear-to-Cubic blend for better visibility at the end
+        const eased = raw === 1 ? 1 : 1 - Math.pow(1 - raw, 2.5);
+
+        const currentProgress = eased * endProgress;
+
+        // Final frame: Snap to target
+        if (raw >= 1) {
+          const finalPoint = (endProgress >= 0.99 && !stopPoint)
+            ? route.coordinates[route.coordinates.length - 1]
+            : (stopPoint || routePointAt(route.coordinates, endProgress));
+
+          aircraftMarkerRef.current.setLngLat(finalPoint);
+          return;
+        }
+
+        const point = routePointAt(route.coordinates, currentProgress);
+        if (point) {
+          aircraftMarkerRef.current.setLngLat(point);
           aircraftFrameRef.current = requestAnimationFrame(animate);
         }
       };

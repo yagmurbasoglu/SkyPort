@@ -565,7 +565,7 @@ class AnalysisService:
                                     ]
                                 ],
                             },
-                            "properties": {
+            "properties": {
                                 "suitability_score": 88.0,
                                 "cell_index": "prototype-cell",
                                 "score_class": "high",
@@ -573,5 +573,40 @@ class AnalysisService:
                         }
                     ],
                 },
+            },
+        }
+
+    def get_user_history(self, user_id: int) -> dict[str, Any]:
+        analyses = analysis_repo.list_user_analyses(user_id)
+        items = []
+        for a in analyses:
+            summary = analysis_repo.summarize_results(a["id"])
+            items.append({
+                "analysis_id": a["id"],
+                "region_name": a["region_name"],
+                "status": a["status"],
+                "created_at": a["created_at"],
+                "suitability_score": summary["max_score"],
+            })
+        return {"items": items}
+
+    def export_results(self, analysis_id: int, format: str = "geojson") -> dict[str, Any]:
+        analysis = analysis_repo.get_analysis(analysis_id)
+        if analysis is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "Analysis not found.")
+
+        if format == "geojson":
+            heatmap = self.get_heatmap(analysis_id)
+            return {"analysis_id": analysis_id, "format": "geojson", "geojson": heatmap}
+
+        summary = analysis_repo.summarize_results(analysis_id)
+        results = analysis_repo.list_results(analysis_id)
+        return {
+            "analysis_id": analysis_id,
+            "format": format,
+            "report": {
+                "analysis": analysis,
+                "summary": summary,
+                "top_candidates": results[:10],
             },
         }

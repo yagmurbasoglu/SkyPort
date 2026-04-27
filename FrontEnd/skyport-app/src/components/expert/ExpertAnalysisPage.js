@@ -22,7 +22,9 @@ import {
   Typography,
 } from '@mui/material';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
+import AirIcon from '@mui/icons-material/Air';
 import ApartmentIcon from '@mui/icons-material/Apartment';
+import BusinessIcon from '@mui/icons-material/Business';
 import CloseIcon from '@mui/icons-material/Close';
 import CropFreeIcon from '@mui/icons-material/CropFree';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
@@ -384,6 +386,7 @@ const ExpertAnalysisPage = () => {
   const [compareCriteria, setCompareCriteria] = useState('total');
   const [manualCompareCriteria, setManualCompareCriteria] = useState('total');
   const [windVisible, setWindVisible] = useState(false);
+  const [buildings3DVisible, setBuildings3DVisible] = useState(true);
   const pulseRef = useRef(null);
   const windFrameRef = useRef(null);
 
@@ -433,6 +436,23 @@ const ExpertAnalysisPage = () => {
     instance.on('load', () => {
       setMapReady(true);
       instance.resize();
+
+      // High-Impact 3D City Backdrop
+      instance.addLayer({
+        id: '3d-buildings',
+        source: 'composite',
+        'source-layer': 'building',
+        filter: ['==', 'extrude', 'true'],
+        type: 'fill-extrusion',
+        minzoom: 13,
+        paint: {
+          'fill-extrusion-color': '#475569',
+          'fill-extrusion-height': ['get', 'height'],
+          'fill-extrusion-base': ['get', 'min_height'],
+          'fill-extrusion-opacity': 0.45,
+        },
+      });
+
       instance.addSource('bbox-source', { type: 'geojson', data: emptyCollection });
       instance.addLayer({
         id: 'bbox-fill',
@@ -485,12 +505,11 @@ const ExpertAnalysisPage = () => {
             'interpolate',
             ['linear'],
             ['get', 'suitability_score'],
-            0, '#7f1d1d',
-            30, '#dc2626',
-            60, '#f59e0b',
-            80, '#84cc16',
-            95, '#22c55e',
-            100, '#15803d',
+            0, 'rgba(239, 68, 68, 0.15)',
+            25, '#ff0000', // Pure Red - LOW
+            50, '#ffcc00', // Yellow/Orange - NEUTRAL
+            80, '#00ff00', // Pure Green - GOOD
+            100, '#00ff88', // Neon Green - PEAK
           ],
           'fill-extrusion-height': [
             'interpolate',
@@ -597,7 +616,7 @@ const ExpertAnalysisPage = () => {
         source: 'top-pulse',
         paint: {
           'circle-radius': ['get', 'radius'],
-          'circle-color': '#fec287',
+          'circle-color': '#00ff88',
           'circle-opacity': ['get', 'opacity'],
           'circle-stroke-width': 0,
         },
@@ -609,10 +628,24 @@ const ExpertAnalysisPage = () => {
         type: 'fill-extrusion',
         source: 'best-candidate',
         paint: {
-          'fill-extrusion-color': '#fec287',
+          'fill-extrusion-color': '#00ff88',
           'fill-extrusion-height': 400,
           'fill-extrusion-base': 0,
           'fill-extrusion-opacity': ['get', 'opacity'],
+        },
+      });
+
+      instance.addSource('wind-lines', { type: 'geojson', data: emptyCollection });
+      instance.addLayer({
+        id: 'wind-lines-layer',
+        type: 'line',
+        source: 'wind-lines',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 1.5,
+          'line-opacity': 0.15,
+          'line-dasharray': [2, 4],
         },
       });
 
@@ -644,20 +677,6 @@ const ExpertAnalysisPage = () => {
         instance.getCanvas().style.cursor = '';
       });
 
-      instance.addSource('wind-lines', { type: 'geojson', data: emptyCollection });
-      instance.addLayer({
-        id: 'wind-lines-layer',
-        type: 'line',
-        source: 'wind-lines',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': '#ffffff',
-          'line-width': 1.5,
-          'line-opacity': 0.15,
-          'line-dasharray': [2, 4],
-        },
-      });
-
       fetchAirspace(ISTANBUL_AIRSPACE_BOUNDS);
       applyRasterBasemapMode(instance, 'light');
     });
@@ -687,6 +706,22 @@ const ExpertAnalysisPage = () => {
     if (!mapReady || !map.current) return;
     fetchAirspace(ISTANBUL_AIRSPACE_BOUNDS);
   }, [fetchAirspace, mapReady]);
+
+  useEffect(() => {
+    if (!mapReady || !map.current) return;
+    const instance = map.current;
+    if (instance.getLayer('3d-buildings')) {
+      instance.setLayoutProperty('3d-buildings', 'visibility', buildings3DVisible ? 'visible' : 'none');
+    }
+  }, [buildings3DVisible, mapReady]);
+
+  useEffect(() => {
+    if (!mapReady || !map.current) return;
+    const instance = map.current;
+    if (instance.getLayer('wind-lines-layer')) {
+      instance.setLayoutProperty('wind-lines-layer', 'visibility', windVisible ? 'visible' : 'none');
+    }
+  }, [windVisible, mapReady]);
 
   useEffect(() => {
     if (!mapReady || !map.current) return;
@@ -1243,6 +1278,7 @@ const ExpertAnalysisPage = () => {
         axios.get(`/api/analysis/${created.data.analysis_id}/result`),
         axios.get(`/api/analysis/${created.data.analysis_id}/heatmap`),
       ]);
+
       setAnalysisResult(resultResponse.data);
       setHeatmap(heatmapResponse.data);
       setActiveWorkspace('results');
@@ -1394,7 +1430,7 @@ const ExpertAnalysisPage = () => {
                 key={`${title}-${candidate.cell_index}`}
                 sx={{ display: 'grid', gridTemplateColumns: '18px 76px 1fr auto', gap: 1, alignItems: 'center' }}
               >
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ['#fec287', '#fb8861', '#b6367a'][idx] }} />
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ['#00ff88', '#00ff00', '#ffff00'][idx] }} />
                 <Typography sx={{ color: '#cbd5e1', fontSize: '0.7rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
                   {compareCandidateLabel(idx)}
                 </Typography>
@@ -1473,7 +1509,7 @@ const ExpertAnalysisPage = () => {
           {result.ranked_candidates.map((candidate, idx) => (
             <Box key={`${title}-footer-${candidate.cell_index}`} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: 'rgba(255,255,255,0.03)', p: 0.8, borderRadius: '4px' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ['#fec287', '#fb8861', '#b6367a'][idx] }} />
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ['#00ff88', '#00ff00', '#ffff00'][idx] }} />
                 <Box>
                   <Typography sx={{ color: '#cbd5e1', fontSize: '0.72rem', fontWeight: 700 }}>
                     {compareCandidateLabel(idx)}
@@ -1499,6 +1535,11 @@ const ExpertAnalysisPage = () => {
 
   const workspacePanelSx = {
     ...panelSx,
+    background: 'rgba(2, 6, 23, 0.95)',
+    border: '1px solid rgba(225, 123, 143, 0.3)',
+    backgroundImage: 'linear-gradient(rgba(225, 123, 143, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(225, 123, 143, 0.04) 1px, transparent 1px)',
+    backgroundSize: '20px 20px',
+    boxShadow: 'inset 0 0 20px rgba(225, 123, 143, 0.05), 0 10px 32px rgba(0,0,0,0.5)',
     ...scrollPanelSx,
     position: 'absolute',
     top: 148,
@@ -1934,7 +1975,7 @@ const ExpertAnalysisPage = () => {
                       )}
                       {selectedCompareCells.map((cell, idx) => (
                         <Box key={`manual-compare-${cell.cell_index}`} sx={{ display: 'grid', gridTemplateColumns: '18px 1fr auto auto', gap: 1, alignItems: 'center', bgcolor: 'rgba(255,255,255,0.03)', p: 0.8, borderRadius: '6px' }}>
-                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ['#fec287', '#fb8861', '#b6367a'][idx] }} />
+                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ['#00ff88', '#00ff00', '#ffff00'][idx] }} />
                           <Tooltip title={cell.cell_index}>
                             <Typography sx={{ color: '#cbd5e1', fontSize: '0.68rem', fontFamily: 'monospace', cursor: 'help', whiteSpace: 'nowrap' }}>
                               {shortCellIndex(cell.cell_index)}
@@ -2069,6 +2110,44 @@ const ExpertAnalysisPage = () => {
               <DirectionsTransitIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          <Tooltip title={buildings3DVisible ? 'Hide 3D City' : 'Show 3D City'} placement="left">
+            <IconButton
+              onClick={() => {
+                setBuildings3DVisible((prev) => !prev);
+                setMapControlsOpen(false);
+              }}
+              sx={{
+                width: 34,
+                height: 34,
+                bgcolor: buildings3DVisible ? '#dbeafe' : 'rgba(255,255,255,0.92)',
+                color: buildings3DVisible ? '#1d4ed8' : '#475569',
+                border: '1px solid rgba(148,163,184,0.18)',
+                boxShadow: '0 8px 18px rgba(15,23,42,0.12)',
+                '&:hover': { bgcolor: '#eff6ff' },
+              }}
+            >
+              <BusinessIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={windVisible ? 'Hide Wind Flow' : 'Show Wind Flow'} placement="left">
+            <IconButton
+              onClick={() => {
+                setWindVisible((prev) => !prev);
+                setMapControlsOpen(false);
+              }}
+              sx={{
+                width: 34,
+                height: 34,
+                bgcolor: windVisible ? '#dbeafe' : 'rgba(255,255,255,0.92)',
+                color: windVisible ? '#1d4ed8' : '#475569',
+                border: '1px solid rgba(148,163,184,0.18)',
+                boxShadow: '0 8px 18px rgba(15,23,42,0.12)',
+                '&:hover': { bgcolor: '#eff6ff' },
+              }}
+            >
+              <AirIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Stack>
 
@@ -2108,15 +2187,70 @@ const ExpertAnalysisPage = () => {
         </Button>
       </Paper>
       <Modal open={jobProgress.open && (busy === 'ingest' || busy === 'analysis')} disableAutoFocus>
-        <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 420, maxWidth: 'calc(100% - 32px)', ...panelSx, p: 2.4 }}>
-          <Typography sx={{ color: '#e2e8f0', fontWeight: 900, fontSize: '1rem', mb: 0.8 }}>{jobProgress.phase}</Typography>
-          <Typography sx={{ color: '#94a3b8', fontSize: '0.82rem', mb: 2 }}>{jobProgress.message}</Typography>
-          <LinearProgress
-            variant="determinate"
-            value={jobProgress.percent}
-            sx={{ height: 8, borderRadius: '8px', bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: '#b65f70' } }}
-          />
-          <Typography sx={{ color: '#e17b8f', fontWeight: 900, fontSize: '0.86rem', mt: 1, textAlign: 'right' }}>{jobProgress.percent}%</Typography>
+        <Box sx={{
+          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          width: 500, maxWidth: 'calc(100% - 32px)',
+          background: 'rgba(2, 6, 23, 0.95)',
+          border: '1px solid #e17b8f',
+          boxShadow: '0 0 40px rgba(225, 123, 143, 0.2)',
+          borderRadius: '12px', overflow: 'hidden'
+        }}>
+          {/* Header */}
+          <Box sx={{ background: '#e17b8f', p: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={16} sx={{ color: '#020617' }} />
+            <Typography sx={{ color: '#020617', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              SYSTEM OVERRIDE // {jobProgress.phase}
+            </Typography>
+          </Box>
+          
+          {/* Console Body */}
+          <Box sx={{ p: 3, fontFamily: 'monospace' }}>
+            <Typography sx={{ color: '#e17b8f', fontSize: '0.85rem', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <span style={{ display: 'inline-block', width: 8, height: 16, background: '#e17b8f', animation: 'blink 1s infinite' }} />
+              {jobProgress.message}
+            </Typography>
+
+            {/* Simulated scrolling logs */}
+            <Box sx={{
+              height: 80, overflow: 'hidden', position: 'relative',
+              '&::after': {
+                content: '""', position: 'absolute', inset: 0,
+                background: 'linear-gradient(transparent 0%, rgba(2,6,23,1) 90%)',
+              }
+            }}>
+              <Box sx={{
+                color: '#64748b', fontSize: '0.7rem', lineHeight: 1.8,
+                animation: 'expert-log-scroll 2s linear infinite'
+              }}>
+                <div>[SYS] Extracting OSM node vectors... OK</div>
+                <div>[NET] Bounding box telemetry locked.</div>
+                <div>[H3] Generating resolution 8 geometry grids...</div>
+                <div>[DB] Fetching building heights from cache.</div>
+                <div>[AHP] Applying transport connectivity weights.</div>
+                <div>[NFZ] Intersecting geometry against no-fly zones.</div>
+              </Box>
+            </Box>
+
+            <Box sx={{ mt: 3, position: 'relative' }}>
+              <LinearProgress
+                variant="determinate"
+                value={jobProgress.percent}
+                sx={{
+                  height: 12, borderRadius: '2px', bgcolor: 'rgba(225,123,143,0.1)',
+                  '& .MuiLinearProgress-bar': { bgcolor: '#e17b8f', boxShadow: '0 0 10px #e17b8f' }
+                }}
+              />
+              <Typography sx={{ position: 'absolute', right: 0, top: -20, color: '#e17b8f', fontWeight: 900, fontSize: '0.8rem' }}>
+                {jobProgress.percent}%
+              </Typography>
+            </Box>
+          </Box>
+          <style>
+            {`
+              @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+              @keyframes expert-log-scroll { 0% { transform: translateY(0); } 100% { transform: translateY(-30%); } }
+            `}
+          </style>
         </Box>
       </Modal>
 

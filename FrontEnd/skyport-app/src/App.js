@@ -5,10 +5,9 @@ import theme from './theme';
 import { AuthProvider } from './context/AuthContext';
 import LandingPage from './LandingPage';
 import AuthPage from './pages/AuthPage';
-import MapPage from './pages/MapPage';
 import PassengerPage from './pages/PassengerPage';
-
 import ExpertPage from './pages/ExpertPage';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
@@ -17,11 +16,32 @@ function App() {
       <AuthProvider>
         <Router>
           <Routes>
+            {/* Public routes */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth" element={<AuthPage />} />
-            <Route path="/map" element={<MapPage />} />
-            <Route path="/passenger" element={<PassengerPage />} />
-            <Route path="/expert" element={<ExpertPage />} />
+
+            {/* Protected: any logged-in user */}
+            <Route
+              path="/passenger"
+              element={
+                <ProtectedRoute requiredRole="passenger">
+                  <PassengerPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Protected: expert role only */}
+            <Route
+              path="/expert"
+              element={
+                <ProtectedRoute requiredRole="expert">
+                  <ExpertPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Fallback: unknown routes → home */}
+            <Route path="*" element={<LandingPage />} />
           </Routes>
         </Router>
       </AuthProvider>

@@ -8,6 +8,7 @@ import FlightIcon from '@mui/icons-material/Flight';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import CloseIcon from '@mui/icons-material/Close';
+import WifiOffIcon from '@mui/icons-material/WifiOff';
 import axios from 'axios';
 
 import Navbar from '../components/Navbar';
@@ -42,14 +43,11 @@ const distanceKm = (a, b) => {
 };
 
 const normalizeDbVertiport = (vp) => {
-  // Ensure we show premium pricing even if DB has old low values
   let price = Number(vp.price_per_km || 0);
   if (price < 50) {
-    // Generate a consistent but premium price based on ID
     const seed = (vp.id * 13) % 270;
     price = 180 + seed;
   }
-
   return {
     id: vp.id,
     name: vp.name,
@@ -76,21 +74,48 @@ const PassengerPage = () => {
   const [route, setRoute] = useState(null);
   const [flyToTarget, setFlyToTarget] = useState(null);
   const [vertiports, setVertiports] = useState(MOCK_VERTIPORTS);
+  const [isUsingMock, setIsUsingMock] = useState(false);
 
-  // Favorites stored in localStorage
+  // ── Favorites: synced with backend, localStorage as offline fallback ───────
   const [favorites, setFavorites] = useState(() => {
     try { return JSON.parse(localStorage.getItem('skyport_favorites')) || []; }
     catch { return []; }
   });
 
-  const toggleFavorite = (id) => {
-    setFavorites((prev) => {
-      const next = prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id];
-      localStorage.setItem('skyport_favorites', JSON.stringify(next));
-      return next;
-    });
+  // Load favorites from backend on mount
+  useEffect(() => {
+    axios.get('/api/favorites')
+      .then((res) => {
+        if (Array.isArray(res.data)) {
+          setFavorites(res.data);
+          localStorage.setItem('skyport_favorites', JSON.stringify(res.data));
+        }
+      })
+      .catch(() => {
+        // Silently fall back to localStorage favorites if backend unavailable
+      });
+  }, []);
+
+  const toggleFavorite = async (id) => {
+    const isFav = favorites.includes(id);
+    // Optimistic update first for snappy UX
+    const next = isFav ? favorites.filter((f) => f !== id) : [...favorites, id];
+    setFavorites(next);
+    localStorage.setItem('skyport_favorites', JSON.stringify(next));
+    // Sync with backend — revert on error
+    try {
+      if (isFav) {
+        await axios.delete(`/api/favorites/${id}`);
+      } else {
+        await axios.post(`/api/favorites/${id}`);
+      }
+    } catch {
+      setFavorites(favorites);
+      localStorage.setItem('skyport_favorites', JSON.stringify(favorites));
+    }
   };
 
+  // ── Vertiports from backend ────────────────────────────────────────────────
   useEffect(() => {
     let alive = true;
     const params = {};
@@ -103,15 +128,21 @@ const PassengerPage = () => {
         const active = Array.isArray(response.data) ? response.data.map(normalizeDbVertiport) : [];
         if (active.length > 0) {
           setVertiports(active);
+          setIsUsingMock(false);
+        } else {
+          setIsUsingMock(true);
         }
       })
       .catch(() => {
-        if (alive) setVertiports(MOCK_VERTIPORTS);
+        if (alive) {
+          setVertiports(MOCK_VERTIPORTS);
+          setIsUsingMock(true);
+        }
       });
     return () => { alive = false; };
   }, [filters.minScore, filters.maxPrice]);
 
-  // Apply filters to vertiport list
+  // Apply client-side filters
   const filteredVertiports = useMemo(() => {
     return vertiports.filter((vp) => {
       if (vp.distanceFromCenter > filters.maxDistance) return false;
@@ -143,6 +174,23 @@ const PassengerPage = () => {
           onVertiportSelect={setSelectedVertiport}
           flyToTarget={flyToTarget}
         />
+
+        {/* ── Demo Mode indicator ────────────────────────────────────────── */}
+        {isUsingMock && (
+          <Chip
+            icon={<WifiOffIcon sx={{ fontSize: 14 }} />}
+            label="Demo Mode — Live data unavailable"
+            size="small"
+            sx={{
+              position: 'absolute', bottom: 16, right: 16, zIndex: 30,
+              background: 'rgba(245, 158, 11, 0.15)',
+              border: '1px solid rgba(245, 158, 11, 0.4)',
+              color: '#f59e0b',
+              fontSize: '0.68rem',
+              backdropFilter: 'blur(8px)',
+            }}
+          />
+        )}
 
         {/* ── Mode Tab Bar — floating top center ── */}
         <Paper

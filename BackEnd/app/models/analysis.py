@@ -27,6 +27,9 @@ class Analysis(Base):
     region_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="pending")
     criteria_weights: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    saved_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    saved_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -7,10 +7,13 @@ from app.schemas.geodata import (
     IngestRequest,
     IngestResponse,
     IngestStatusResponse,
+    WindOverlayResponse,
 )
 from app.services.geodata_service import get_airspace_overlay, get_layers, get_status, ingest
+from app.services.weather_service import WeatherService
 
 router = APIRouter(prefix="/geodata", tags=["geodata"])
+weather_service = WeatherService()
 
 
 @router.post("/ingest", response_model=IngestResponse)
@@ -41,3 +44,12 @@ async def get_airspace(
     bbox = BoundingBox(west=west, east=east, south=south, north=north)
     result = get_airspace_overlay(bbox)
     return AirspaceOverlayResponse(**result)
+
+
+@router.get("/wind", response_model=WindOverlayResponse)
+async def get_wind_overlay(
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+) -> WindOverlayResponse:
+    result = weather_service.get_point_weather(latitude=lat, longitude=lng)
+    return WindOverlayResponse(**result)

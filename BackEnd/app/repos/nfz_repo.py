@@ -125,3 +125,33 @@ def list_nfz_geojson_in_bbox(bbox: BoundingBox) -> list[dict]:
                 }
             )
         return features
+
+
+def count_nfz_intersections_in_bbox(bbox: BoundingBox) -> int:
+    query = text(
+        f"""
+        SELECT COUNT(*)
+        FROM public.nfz_zones
+        WHERE is_active = true
+          AND source NOT ILIKE 'CONTROLLED_AIRSPACE%%'
+          {_active_time_clause()}
+          AND ST_Intersects(
+              geom,
+              ST_MakeEnvelope(:west, :south, :east, :north, 4326)
+          )
+        """
+    )
+
+    with SessionLocal() as db:
+        return int(
+            db.execute(
+                query,
+                {
+                    "west": bbox.west,
+                    "south": bbox.south,
+                    "east": bbox.east,
+                    "north": bbox.north,
+                },
+            ).scalar_one()
+            or 0
+        )

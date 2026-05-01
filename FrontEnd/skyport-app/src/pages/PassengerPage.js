@@ -16,6 +16,7 @@ import FilterSidebar from '../components/passenger/FilterSidebar';
 import FavoritesSidebar from '../components/passenger/FavoritesSidebar';
 import RoutePlanner from '../components/passenger/RoutePlanner';
 import { MOCK_VERTIPORTS, FEATURE_ICONS, FEATURE_LABELS } from '../mock/vertiports';
+import { useAuth } from '../context/AuthContext';
 
 const DEFAULT_FILTERS = {
   maxDistance: 40,
@@ -55,11 +56,14 @@ const normalizeDbVertiport = (vp) => {
     name: vp.name,
     lat: Number(vp.lat),
     lng: Number(vp.lng),
-    features: [],
+    features: Array.isArray(vp.features) ? vp.features : [],
     suitabilityScore: Number(vp.suitability_score ?? 75),
     pricePerKm: price,
     description: vp.description || 'Active vertiport from the SkyPort operational network.',
-    distanceFromCenter: Number(distanceKm(CENTER, { lat: Number(vp.lat), lng: Number(vp.lng) }).toFixed(1)),
+    noiseLevel: vp.noise_level || null,
+    distanceFromCenter: Number(
+      (vp.distance_from_center_km ?? distanceKm(CENTER, { lat: Number(vp.lat), lng: Number(vp.lng) })).toFixed(1)
+    ),
   };
 };
 
@@ -70,49 +74,78 @@ const scoreColor = (score) => {
 };
 
 const PassengerPage = () => {
+  const { user } = useAuth();
   const [activeMode, setActiveMode] = useState('map'); // 'map' | 'route' | 'favorites'
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedVertiport, setSelectedVertiport] = useState(null);
   const [route, setRoute] = useState(null);
   const [flyToTarget, setFlyToTarget] = useState(null);
   const [vertiports, setVertiports] = useState(MOCK_VERTIPORTS);
+  const [usingMockData, setUsingMockData] = useState(true);
 
-  // Favorites stored in localStorage
-  const [favorites, setFavorites] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('skyport_favorites')) || []; }
-    catch { return []; }
-  });
+  const [favorites, setFavorites] = useState([]);
 
-  const toggleFavorite = (id) => {
-    setFavorites((prev) => {
-      const next = prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id];
-      localStorage.setItem('skyport_favorites', JSON.stringify(next));
-      return next;
-    });
+  const toggleFavorite = async (id) => {
+    const alreadyFavorite = favorites.includes(id);
+    const previous = favorites;
+    setFavorites((prev) => (
+      alreadyFavorite ? prev.filter((f) => f !== id) : [...prev, id]
+    ));
+    try {
+      if (alreadyFavorite) {
+        await axios.delete(`/api/favorites/${id}`);
+      } else {
+        await axios.post(`/api/favorites/${id}`);
+      }
+    } catch (_err) {
+      setFavorites(previous);
+    }
   };
+
+  useEffect(() => {
+    let alive = true;
+    axios.get('/api/favorites')
+      .then((response) => {
+        if (alive && Array.isArray(response.data)) setFavorites(response.data);
+      })
+      .catch(() => {
+        if (alive) setFavorites([]);
+      });
+    return () => { alive = false; };
+  }, [user?.id]);
 
   useEffect(() => {
     let alive = true;
     const params = {};
     if (filters.minScore) params.min_score = filters.minScore;
     if (filters.maxPrice) params.max_price = filters.maxPrice;
+    if (filters.maxDistance) params.max_distance_km = filters.maxDistance;
+    params.center_lat = CENTER.lat;
+    params.center_lng = CENTER.lng;
+    if (filters.metro) params.metro = true;
+    if (filters.low_noise) params.low_noise = true;
+    if (filters.parking) params.parking = true;
+    if (filters.ev_charging) params.ev_charging = true;
 
     axios.get('/api/vertiports', { params })
       .then((response) => {
         if (!alive) return;
         const active = Array.isArray(response.data) ? response.data.map(normalizeDbVertiport) : [];
-        if (active.length > 0) {
-          setVertiports(active);
-        }
+        setVertiports(active);
+        setUsingMockData(false);
       })
       .catch(() => {
-        if (alive) setVertiports(MOCK_VERTIPORTS);
+        if (alive) {
+          setVertiports(MOCK_VERTIPORTS);
+          setUsingMockData(true);
+        }
       });
     return () => { alive = false; };
-  }, [filters.minScore, filters.maxPrice]);
+  }, [filters]);
 
   // Apply filters to vertiport list
   const filteredVertiports = useMemo(() => {
+    if (!usingMockData) return vertiports;
     return vertiports.filter((vp) => {
       if (vp.distanceFromCenter > filters.maxDistance) return false;
       if (filters.metro && !vp.features.includes('metro')) return false;
@@ -121,7 +154,7 @@ const PassengerPage = () => {
       if (filters.ev_charging && !vp.features.includes('ev_charging')) return false;
       return true;
     });
-  }, [filters, vertiports]);
+  }, [filters, vertiports, usingMockData]);
 
   const handleModeChange = (_, newMode) => {
     setActiveMode(newMode);
@@ -134,7 +167,6 @@ const PassengerPage = () => {
 
       {/* Map + floating panels */}
       <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-
         {/* Map fills entire background */}
         <PassengerMapView
           filteredVertiports={filteredVertiports}

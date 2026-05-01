@@ -1,13 +1,22 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Box, Typography, Button, Chip } from '@mui/material';
+import { Box, Typography, Button, Chip, IconButton, Tooltip } from '@mui/material';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import HomeIcon from '@mui/icons-material/Home';
+import LogoutIcon from '@mui/icons-material/Logout';
+
+import { useAuth } from '../context/AuthContext';
 
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth();
   const isMap = location.pathname === '/map';
+  const showLogout = Boolean(user) && (location.pathname === '/passenger' || location.pathname === '/map');
+
+  const handleLogout = () => {
+    logout();
+  };
 
   return (
     <Box
@@ -91,6 +100,21 @@ const Navbar = () => {
             System Online
           </Typography>
         </Box>
+
+        {showLogout && (
+          <Tooltip title="Logout">
+            <IconButton
+              onClick={handleLogout}
+              size="small"
+              sx={{
+                color: '#fca5a5',
+                '&:hover': { color: '#fecaca', background: 'rgba(252,165,165,0.08)' },
+              }}
+            >
+              <LogoutIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
 
         {isMap && (
           <Button

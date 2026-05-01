@@ -400,7 +400,7 @@ def test_list_active_vertiports_returns_db_payload(monkeypatch) -> None:
     monkeypatch.setattr(
         vertiports_route,
         "list_active_vertiports",
-        lambda: [
+        lambda **_kwargs: [
             {
                 "id": 7,
                 "name": "DB Vertiport",
@@ -409,6 +409,9 @@ def test_list_active_vertiports_returns_db_payload(monkeypatch) -> None:
                 "suitability_score": 88.5,
                 "price_per_km": 3.2,
                 "description": "Active test vertiport",
+                "features": ["metro", "low_noise"],
+                "noise_level": "low",
+                "distance_from_center_km": 4.2,
                 "is_active": True,
             }
         ],
@@ -421,3 +424,31 @@ def test_list_active_vertiports_returns_db_payload(monkeypatch) -> None:
     assert body[0]["id"] == 7
     assert body[0]["lat"] == 41.01
     assert body[0]["is_active"] is True
+    assert body[0]["features"] == ["metro", "low_noise"]
+    assert body[0]["distance_from_center_km"] == 4.2
+
+
+def test_list_active_vertiports_accepts_advanced_filters(monkeypatch) -> None:
+    _as_user("passenger")
+    seen = {}
+
+    def fake_repo(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    monkeypatch.setattr(vertiports_route, "list_active_vertiports", fake_repo)
+
+    response = client.get(
+        "/api/vertiports?min_score=80&max_price=250&max_distance_km=5&center_lat=41.03&center_lng=28.98&low_noise=true&metro=true&parking=true&ev_charging=true"
+    )
+
+    assert response.status_code == 200
+    assert seen["min_score"] == 80
+    assert seen["max_price"] == 250
+    assert seen["max_distance_km"] == 5
+    assert seen["center_lat"] == 41.03
+    assert seen["center_lng"] == 28.98
+    assert seen["low_noise"] is True
+    assert seen["metro"] is True
+    assert seen["parking"] is True
+    assert seen["ev_charging"] is True

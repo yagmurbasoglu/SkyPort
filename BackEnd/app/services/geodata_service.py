@@ -16,6 +16,7 @@ from app.repos.controlled_airspace_repo import (
     list_controlled_airspace_in_bbox,
 )
 from app.repos.nfz_repo import (
+    count_nfz_intersections_in_bbox,
     get_nfz_source_health,
     list_nfz_geojson_in_bbox,
     list_nfz_in_bbox,
@@ -78,6 +79,15 @@ def _validate_bbox(req: IngestRequest) -> None:
                 "details": {
                     "allowed_bbox": ISTANBUL_BOUNDING_BOX.model_dump(),
                 },
+            },
+        )
+
+    if count_nfz_intersections_in_bbox(bbox) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "NFZ_INTERSECTION_NOT_ALLOWED",
+                "message": "Selected analysis area overlaps an active no-fly zone. Please redraw the region outside NFZ boundaries.",
             },
         )
 

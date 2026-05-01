@@ -9,6 +9,7 @@ import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import CloseIcon from '@mui/icons-material/Close';
 import WifiOffIcon from '@mui/icons-material/WifiOff';
+import HistoryIcon from '@mui/icons-material/History';
 import axios from 'axios';
 
 import Navbar from '../components/Navbar';
@@ -146,6 +147,8 @@ const PassengerPage = () => {
   const filteredVertiports = useMemo(() => {
     return vertiports.filter((vp) => {
       if (vp.distanceFromCenter > filters.maxDistance) return false;
+      if (vp.pricePerKm > filters.maxPrice) return false;
+      if (vp.suitabilityScore < filters.minScore) return false;
       if (filters.metro && !vp.features.includes('metro')) return false;
       if (filters.low_noise && !vp.features.includes('low_noise')) return false;
       if (filters.parking && !vp.features.includes('parking')) return false;
@@ -237,6 +240,7 @@ const PassengerPage = () => {
               }
               value="favorites"
             />
+            <Tab icon={<HistoryIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Past Flights" value="history" />
           </Tabs>
         </Paper>
 
@@ -254,23 +258,36 @@ const PassengerPage = () => {
         {/* ── Route Planner — shown in Route mode ── */}
         <Fade in={activeMode === 'route'}>
           <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
-            <RoutePlanner
-              vertiports={vertiports}
-              onRouteCalculated={setRoute}
-              onClearRoute={() => setRoute(null)}
-            />
+            <Box sx={{ pointerEvents: 'auto', display: 'inline-block' }}>
+              <RoutePlanner
+                vertiports={vertiports}
+                onRouteCalculated={setRoute}
+                onClearRoute={() => setRoute(null)}
+              />
+            </Box>
           </Box>
         </Fade>
 
         {/* ── Favorites Sidebar — shown in Favorites mode ── */}
         <Fade in={activeMode === 'favorites'}>
-          <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: activeMode === 'favorites' ? 'auto' : 'none' }}>
-            <FavoritesSidebar
-              favorites={favorites}
-              vertiports={vertiports}
-              onToggle={toggleFavorite}
-              onFlyTo={(vp) => setFlyToTarget(vp)}
-            />
+          <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
+            <Box sx={{ pointerEvents: 'auto', display: 'inline-block' }}>
+              <FavoritesSidebar
+                favorites={favorites}
+                vertiports={vertiports}
+                onToggle={toggleFavorite}
+                onFlyTo={(vp) => setFlyToTarget(vp)}
+              />
+            </Box>
+          </Box>
+        </Fade>
+
+        {/* ── Past Flights Sidebar — shown in History mode ── */}
+        <Fade in={activeMode === 'history'}>
+          <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
+            <Box sx={{ pointerEvents: 'auto', display: 'inline-block' }}>
+              <PastFlightsSidebar />
+            </Box>
           </Box>
         </Fade>
 
@@ -369,5 +386,47 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
     </Box>
   </Paper>
 );
+
+// ─── Past Flights Sidebar ─────────────────────────────────────────────────────
+const PastFlightsSidebar = () => {
+  const flightHistory = useMemo(
+    () => JSON.parse(localStorage.getItem('skyport_flight_history') || '[]'),
+    []
+  );
+
+  return (
+    <Paper
+      sx={{
+        position: 'absolute', top: '50%', left: 24, transform: 'translateY(-50%)',
+        width: 320, background: 'rgba(2, 6, 23, 0.92)',
+        backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: '14px', maxHeight: 'calc(100vh - 180px)',
+        overflowY: 'auto',
+      }}
+    >
+      <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 1 }}>
+        <HistoryIcon sx={{ fontSize: 16, color: '#e17b8f' }} />
+        <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          Past Flights
+        </Typography>
+      </Box>
+      <Box sx={{ p: 2 }}>
+        {flightHistory.length === 0 ? (
+          <Typography sx={{ fontSize: '0.78rem', color: '#475569', textAlign: 'center', mt: 3 }}>No flights yet.</Typography>
+        ) : flightHistory.map((f, i) => (
+          <Box key={i} sx={{ mb: 1.2, p: 1.5, borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
+              <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#e17b8f' }}>{f.flightNo}</Typography>
+              <Typography sx={{ fontSize: '0.65rem', color: '#475569' }}>Gate {f.gate}</Typography>
+            </Box>
+            <Typography sx={{ fontSize: '0.72rem', color: '#e2e8f0', fontWeight: 600 }} noWrap>{f.from} → {f.to}</Typography>
+            <Typography sx={{ fontSize: '0.65rem', color: '#64748b', mt: 0.3 }}>{f.distance_km} km · {f.duration_min} min · ₺{f.price_tl}</Typography>
+            <Typography sx={{ fontSize: '0.6rem', color: '#334155', mt: 0.2 }}>{f.date}</Typography>
+          </Box>
+        ))}
+      </Box>
+    </Paper>
+  );
+};
 
 export default PassengerPage;

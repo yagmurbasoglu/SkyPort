@@ -1,17 +1,3 @@
-/**
- * ============================================================
- * MOCK DATA — vertiports.js
- * ============================================================
- * TODO: Replace MOCK_VERTIPORTS with a real API call:
- *   GET /api/vertiports
- *   Expected response: { id, name, lat, lng, features: string[], suitabilityScore: number, distanceFromCenter: number }
- *
- * TODO: Replace generateMockRoute with a real API call:
- *   POST /api/route  { fromId: string, toId: string }
- *   Expected response: { coordinates: [lng,lat][], distance_km: number, duration_min: number, price_tl: number }
- * ============================================================
- */
-
 // ─── Haversine distance helper ────────────────────────────────────────────────
 const haversineKm = (lat1, lng1, lat2, lng2) => {
   const R = 6371;
@@ -25,7 +11,6 @@ const haversineKm = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-// Istanbul center reference point (Taksim)
 const CENTER = { lat: 41.0369, lng: 28.985 };
 
 // ─── Mock vertiport data ───────────────────────────────────────────────────────
@@ -35,9 +20,9 @@ export const MOCK_VERTIPORTS = [
     name: 'Atatürk Airport Vertiport',
     lat: 40.9769,
     lng: 28.8143,
-    features: ['metro', 'parking', 'ev_charging'],
+    features: ['metro', 'parking', 'ev_charging', 'wifi', 'security'],
     suitabilityScore: 88,
-    pricePerKm: 185.0,
+    pricePerKm: 120,
     description: 'Main hub at the former Atatürk Airport site, fully equipped for UAM operations.',
   },
   {
@@ -45,9 +30,9 @@ export const MOCK_VERTIPORTS = [
     name: 'Sabiha Gökçen Vertiport',
     lat: 40.8987,
     lng: 29.3095,
-    features: ['parking', 'ev_charging'],
+    features: ['parking', 'ev_charging', 'fast_charge', 'security'],
     suitabilityScore: 82,
-    pricePerKm: 195.0,
+    pricePerKm: 120,
     description: 'Eastern hub integrated with Sabiha Gökçen International Airport.',
   },
   {
@@ -55,9 +40,9 @@ export const MOCK_VERTIPORTS = [
     name: 'Beşiktaş Waterfront Vertiport',
     lat: 41.0425,
     lng: 29.0047,
-    features: ['metro', 'low_noise'],
+    features: ['metro', 'low_noise', 'lounge', 'wifi'],
     suitabilityScore: 91,
-    pricePerKm: 245.0,
+    pricePerKm: 120,
     description: 'Premium Bosphorus-side vertiport with direct metro connection.',
   },
   {
@@ -65,9 +50,9 @@ export const MOCK_VERTIPORTS = [
     name: 'Kadıköy Hub Vertiport',
     lat: 40.9905,
     lng: 29.0302,
-    features: ['metro', 'low_noise'],
+    features: ['metro', 'low_noise', 'wifi'],
     suitabilityScore: 87,
-    pricePerKm: 210.0,
+    pricePerKm: 120,
     description: 'Central Asian-side vertiport near Kadıköy ferry and metro station.',
   },
   {
@@ -75,9 +60,9 @@ export const MOCK_VERTIPORTS = [
     name: 'Taksim Central Vertiport',
     lat: 41.0369,
     lng: 28.985,
-    features: ['metro'],
+    features: ['metro', 'lounge', 'wifi', 'security'],
     suitabilityScore: 79,
-    pricePerKm: 280.0,
+    pricePerKm: 120,
     description: 'High-demand central Istanbul vertiport above Taksim Square.',
   },
   {
@@ -85,9 +70,9 @@ export const MOCK_VERTIPORTS = [
     name: 'Bağcılar Metro Vertiport',
     lat: 41.04,
     lng: 28.855,
-    features: ['metro', 'parking'],
+    features: ['metro', 'parking', 'wifi'],
     suitabilityScore: 74,
-    pricePerKm: 175.0,
+    pricePerKm: 120,
     description: 'Western corridor vertiport serving Bağcılar and Esenler districts.',
   },
   {
@@ -95,9 +80,9 @@ export const MOCK_VERTIPORTS = [
     name: 'Sarıyer North Vertiport',
     lat: 41.1667,
     lng: 29.05,
-    features: ['low_noise', 'parking'],
+    features: ['low_noise', 'parking', 'ev_charging'],
     suitabilityScore: 85,
-    pricePerKm: 225.0,
+    pricePerKm: 120,
     description: 'Quiet northern Bosphorus vertiport, ideal for suburban commuters.',
   },
   {
@@ -105,9 +90,9 @@ export const MOCK_VERTIPORTS = [
     name: 'Kartal East Vertiport',
     lat: 40.881,
     lng: 29.2017,
-    features: ['metro', 'ev_charging'],
+    features: ['metro', 'ev_charging', 'fast_charge', 'security'],
     suitabilityScore: 80,
-    pricePerKm: 185.0,
+    pricePerKm: 120,
     description: 'Far-east hub connecting Kartal, Maltepe, and Pendik districts.',
   },
   {
@@ -115,9 +100,9 @@ export const MOCK_VERTIPORTS = [
     name: 'Bakırköy Coast Vertiport',
     lat: 40.9794,
     lng: 28.8694,
-    features: ['parking', 'low_noise'],
+    features: ['parking', 'low_noise', 'wifi'],
     suitabilityScore: 76,
-    pricePerKm: 190.0,
+    pricePerKm: 120,
     description: 'Coastal vertiport west of the city, near Florya and Yeşilköy.',
   },
   {
@@ -125,9 +110,9 @@ export const MOCK_VERTIPORTS = [
     name: 'Üsküdar Ferry Vertiport',
     lat: 41.022,
     lng: 29.0151,
-    features: ['metro', 'low_noise'],
+    features: ['metro', 'low_noise', 'lounge', 'wifi'],
     suitabilityScore: 90,
-    pricePerKm: 235.0,
+    pricePerKm: 120,
     description: 'Premium vertiport above Üsküdar ferry terminal with panoramic views.',
   },
   {
@@ -135,24 +120,23 @@ export const MOCK_VERTIPORTS = [
     name: 'Maslak Tech Campus Vertiport',
     lat: 41.1118,
     lng: 29.021,
-    features: ['metro', 'parking', 'ev_charging'],
+    features: ['metro', 'parking', 'ev_charging', 'fast_charge', 'wifi', 'lounge'],
     suitabilityScore: 84,
-    pricePerKm: 260.0,
-    description: 'Northern business-district vertiport placed for short test corridors away from major NFZ clusters.',
+    pricePerKm: 120,
+    description: 'Northern business-district vertiport serving tech campuses and finance hubs.',
   },
   {
     id: 'vp-012',
     name: 'Istinye Valley Vertiport',
     lat: 41.1094,
     lng: 29.0417,
-    features: ['low_noise', 'parking'],
+    features: ['low_noise', 'parking', 'wifi'],
     suitabilityScore: 83,
-    pricePerKm: 240.0,
+    pricePerKm: 120,
     description: 'Short-hop Bosphorus-side vertiport intended for passenger route simulation checks.',
   },
 ].map((vp) => ({
   ...vp,
-  // Auto-calculate distance from Istanbul center so filtering works correctly
   distanceFromCenter: parseFloat(haversineKm(CENTER.lat, CENTER.lng, vp.lat, vp.lng).toFixed(1)),
 }));
 
@@ -162,6 +146,10 @@ export const FEATURE_LABELS = {
   low_noise: 'Low Noise Area',
   parking: 'Covered Parking',
   ev_charging: 'EV Charging',
+  wifi: 'Free Wi-Fi',
+  lounge: 'VIP Lounge',
+  fast_charge: 'Fast Charge (45 min)',
+  security: '24/7 Security',
 };
 
 export const FEATURE_ICONS = {
@@ -169,15 +157,27 @@ export const FEATURE_ICONS = {
   low_noise: '🔇',
   parking: '🅿️',
   ev_charging: '⚡',
+  wifi: '📶',
+  lounge: '🛋️',
+  fast_charge: '🔋',
+  security: '🛡️',
+};
+
+export const FEATURE_DESCRIPTIONS = {
+  metro: 'Direct metro access within 2-min walk',
+  low_noise: 'Noise level below 65 dB at ground',
+  parking: 'Covered parking for up to 200 vehicles',
+  ev_charging: 'Standard EV chargers (Type 2)',
+  wifi: 'High-speed Wi-Fi in terminal area',
+  lounge: 'VIP lounge with refreshments & seating',
+  fast_charge: 'Rapid charge: 80% in 45 minutes',
+  security: 'Armed security 24/7, biometric entry',
 };
 
 // ─── Mock route generator ──────────────────────────────────────────────────────
-// TODO: Replace this entire function with: POST /api/route { fromId, toId }
 export const generateMockRoute = (fromVp, toVp) => {
   const steps = 40;
   const coords = [];
-
-  // Perpendicular direction for arc curve
   const dLng = toVp.lng - fromVp.lng;
   const dLat = toVp.lat - fromVp.lat;
   const perpLen = Math.sqrt(dLng * dLng + dLat * dLat) || 1;
@@ -186,15 +186,13 @@ export const generateMockRoute = (fromVp, toVp) => {
     const t = i / steps;
     const lng = fromVp.lng + dLng * t;
     const lat = fromVp.lat + dLat * t;
-    // Slight arc perpendicular to the path
     const arc = Math.sin(t * Math.PI) * 0.015;
     coords.push([lng + (-dLat / perpLen) * arc, lat + (dLng / perpLen) * arc]);
   }
 
   const distance = haversineKm(fromVp.lat, fromVp.lng, toVp.lat, toVp.lng);
-  const durationMin = Math.max(3, Math.round(distance / 2)); // air taxi ~120 km/h
-  // Updated premium pricing: 550 TL base + 180 TL per km
-  const priceTl = Math.round(distance * 180.0 + 550.0);
+  const durationMin = Math.max(3, Math.round(distance / 2));
+  const priceTl = Math.round(distance * 120 + 300);
 
   return {
     fromVertiport: fromVp,

@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import {
   Box, Paper, Typography, Button, Divider, Autocomplete,
   TextField, CircularProgress, Alert, Chip, Modal, Fade, Backdrop, IconButton
@@ -10,9 +12,28 @@ import StraightenIcon from '@mui/icons-material/Straighten';
 import PaymentIcon from '@mui/icons-material/Payment';
 import AirIcon from '@mui/icons-material/Air';
 import CloseIcon from '@mui/icons-material/Close';
-import QrCode2Icon from '@mui/icons-material/QrCode2';
+import DownloadIcon from '@mui/icons-material/Download';
+import HistoryIcon from '@mui/icons-material/History';
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 import axios from 'axios';
+
+// ─── Flight number & gate helpers ─────────────────────────────────────────────
+const GATES = ['A1','A2','A3','B1','B2','B3','C1','C2','C4','D2','D5','D8'];
+
+const getNextFlightNo = () => {
+  const stored = parseInt(localStorage.getItem('skyport_last_flight_no') || '100', 10);
+  const next = stored + 1;
+  localStorage.setItem('skyport_last_flight_no', String(next));
+  return `SP-${next}`;
+};
+
+const randomGate = () => GATES[Math.floor(Math.random() * GATES.length)];
+
+const saveFlightHistory = (entry) => {
+  const history = JSON.parse(localStorage.getItem('skyport_flight_history') || '[]');
+  history.unshift(entry); // newest first
+  localStorage.setItem('skyport_flight_history', JSON.stringify(history.slice(0, 20)));
+};
 
 const autoSx = {
   '& .MuiOutlinedInput-root': {
@@ -113,6 +134,9 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
   const [route, setRoute] = useState(null);
   const [error, setError] = useState('');
   const [showBoardingPass, setShowBoardingPass] = useState(false);
+  const [flightNo, setFlightNo] = useState('');
+  const [gate, setGate] = useState('');
+  const ticketRef = useRef(null);
 
   const handleSwap = () => {
     setFrom(to);
@@ -136,17 +160,9 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
           };
       const response = await axios.post('/api/route', {
         ...endpointPayload,
-        constraints: {
-          avoid_nfz: true,
-          avoid_obstacles: true,
-          max_wind_kmh: 35,
-        },
+        constraints: { avoid_nfz: true, avoid_obstacles: true, max_wind_kmh: 35 },
       });
-      const result = {
-        ...response.data,
-        fromVertiport: from,
-        toVertiport: to,
-      };
+      const result = { ...response.data, fromVertiport: from, toVertiport: to };
       setRoute(result);
       onRouteCalculated(result);
     } catch (err) {
@@ -158,16 +174,57 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
     }
   };
 
+  const handleBookFlight = () => {
+    const fn = getNextFlightNo();
+    const g = randomGate();
+    setFlightNo(fn);
+    setGate(g);
+    const entry = {
+      flightNo: fn,
+      gate: g,
+      from: route?.fromVertiport?.name || from?.name || 'Origin',
+      to: route?.toVertiport?.name || to?.name || 'Destination',
+      distance_km: route?.distance_km,
+      duration_min: route?.duration_min,
+      price_tl: route?.price_tl,
+      date: new Date().toLocaleString('tr-TR'),
+    };
+    saveFlightHistory(entry);
+    setShowBoardingPass(true);
+  };
+
+  const handleClear = () => {
+    setFrom(null); setTo(null); setRoute(null); setError(''); onClearRoute();
+  };
+
   const statusMeta = routeStatusConfig(route);
   const shortBlockingCopy = blockingCopy(route);
   const obstacleInfo = obstacleDataCopy(route);
 
-  const handleClear = () => {
-    setFrom(null);
-    setTo(null);
-    setRoute(null);
-    setError('');
-    onClearRoute();
+  const fromName = route?.fromVertiport?.name || from?.name || '';
+  const toName   = route?.toVertiport?.name   || to?.name   || '';
+  const qrData   = encodeURIComponent(`SKYPORT|${flightNo}|${fromName}|${toName}|${gate}`);
+  const qrUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}&bgcolor=0f172a&color=e17b8f&margin=8`;
+
+  const handleDownloadPDF = async () => {
+    if (!ticketRef.current) return;
+    try {
+      const canvas = await html2canvas(ticketRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#0f172a',
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: [85, 140], // Custom ticket size
+      });
+      pdf.addImage(imgData, 'PNG', 0, 0, 85, 140);
+      pdf.save(`SkyPort-${flightNo}-Ticket.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    }
   };
 
   return (
@@ -390,7 +447,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
             {route.is_safe && (
               <Button
                 fullWidth
-                onClick={() => setShowBoardingPass(true)}
+                onClick={handleBookFlight}
                 sx={{
                   mt: 2,
                   textTransform: 'uppercase',
@@ -425,81 +482,69 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
         )}
       </Box>
 
-      {/* ── Futuristic Boarding Pass Modal ── */}
-      <Modal
-        open={showBoardingPass}
-        onClose={() => setShowBoardingPass(false)}
-        closeAfterTransition
-        BackdropComponent={Backdrop}
-        BackdropProps={{ timeout: 500, sx: { backdropFilter: 'blur(8px)' } }}
-      >
+      {/* ── Boarding Pass Modal ── */}
+      <Modal open={showBoardingPass} onClose={() => setShowBoardingPass(false)} closeAfterTransition BackdropComponent={Backdrop} BackdropProps={{ timeout: 500, sx: { backdropFilter: 'blur(8px)' } }}>
         <Fade in={showBoardingPass}>
-          <Box sx={{
-            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-            width: 320, background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(32px) saturate(200%)',
-            border: '1px solid rgba(225, 123, 143, 0.3)',
-            borderRadius: '24px', boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-            overflow: 'hidden', p: 0, outline: 'none'
-          }}>
-            {/* Header */}
-            <Box sx={{ background: 'linear-gradient(135deg, #e17b8f, #be123c)', p: 3, position: 'relative' }}>
-              <IconButton onClick={() => setShowBoardingPass(false)} sx={{ position: 'absolute', top: 8, right: 8, color: '#fff' }}>
+          <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', outline: 'none' }}>
+            <Box ref={ticketRef} sx={{ width: 320, background: '#0f172a', border: '1px solid rgba(225,123,143,0.3)', borderRadius: '24px', boxShadow: '0 24px 64px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
+              {/* Card header */}
+              <Box sx={{ background: 'linear-gradient(135deg,#e17b8f,#be123c)', p: 3, position: 'relative' }}>
+                <Typography sx={{ color: '#fff', fontSize: '0.65rem', fontWeight: 600, opacity: 0.8, letterSpacing: '0.12em', textTransform: 'uppercase' }}>SkyPort Boarding Pass</Typography>
+                <Typography sx={{ color: '#fff', fontSize: '1.4rem', fontWeight: 800, mt: 0.3 }}>First Class</Typography>
+                <FlightIcon sx={{ position: 'absolute', bottom: -10, right: 10, fontSize: 80, color: 'rgba(255,255,255,0.08)', transform: 'rotate(45deg)' }} />
+              </Box>
+
+              {/* Route row */}
+              <Box sx={{ px: 3, pt: 2.5, pb: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase' }}>From</Typography>
+                  <Typography sx={{ fontSize: '0.82rem', color: '#e2e8f0', fontWeight: 700 }} noWrap>{fromName || 'Origin'}</Typography>
+                </Box>
+                <FlightIcon sx={{ color: '#e17b8f', transform: 'rotate(90deg)', opacity: 0.5, mx: 1, flexShrink: 0 }} />
+                <Box sx={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+                  <Typography sx={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase' }}>To</Typography>
+                  <Typography sx={{ fontSize: '0.82rem', color: '#e2e8f0', fontWeight: 700 }} noWrap>{toName || 'Destination'}</Typography>
+                </Box>
+              </Box>
+
+              <Divider sx={{ mx: 3, mt: 2, borderColor: 'rgba(255,255,255,0.06)', borderStyle: 'dashed' }} />
+
+              {/* Flight details row */}
+              <Box sx={{ px: 3, py: 1.5, display: 'flex', justifyContent: 'space-between' }}>
+                <Box><Typography sx={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase' }}>Flight</Typography><Typography sx={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>{flightNo}</Typography></Box>
+                <Box><Typography sx={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase' }}>Gate</Typography><Typography sx={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>{gate}</Typography></Box>
+                <Box><Typography sx={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase' }}>Duration</Typography><Typography sx={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>{route?.duration_min ?? '–'} min</Typography></Box>
+                <Box><Typography sx={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase' }}>Price</Typography><Typography sx={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>₺{route?.price_tl ?? '–'}</Typography></Box>
+              </Box>
+
+              <Box sx={{ px: 3, pb: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, background: 'rgba(34,197,94,0.1)', p: 1.2, borderRadius: '8px', border: '1px solid rgba(34,197,94,0.2)' }}>
+                  <WorkspacePremiumIcon sx={{ color: '#4ade80', fontSize: 16 }} />
+                  <Typography sx={{ color: '#4ade80', fontSize: '0.68rem', fontWeight: 600 }}>Zero Emission Flight · CO₂ Saved</Typography>
+                </Box>
+              </Box>
+
+              {/* QR Code */}
+              <Box sx={{ background: 'rgba(255,255,255,0.02)', p: 2.5, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <img src={qrUrl} alt="Boarding QR" style={{ width: 140, height: 140, borderRadius: 8, background: '#0f172a' }} />
+                <Typography sx={{ fontSize: '0.58rem', color: '#64748b', mt: 1, letterSpacing: '0.1em' }}>SCAN AT HELIPAD — {flightNo}</Typography>
+              </Box>
+            </Box>
+
+            {/* Actions (Not part of the printed ticket) */}
+            <Box sx={{ p: 2, display: 'flex', gap: 1 }}>
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
+                onClick={handleDownloadPDF}
+                sx={{ background: 'linear-gradient(135deg,#e17b8f,#be123c)', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', borderRadius: '10px', py: 1.2 }}
+              >
+                Download PDF Ticket
+              </Button>
+              <IconButton onClick={() => setShowBoardingPass(false)} sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: '#fff', borderRadius: '10px' }}>
                 <CloseIcon fontSize="small" />
               </IconButton>
-              <Typography sx={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600, opacity: 0.8, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                SkyPort Boarding Pass
-              </Typography>
-              <Typography sx={{ color: '#fff', fontSize: '1.4rem', fontWeight: 800, mt: 0.5 }}>
-                First Class
-              </Typography>
-            </Box>
-            
-            {/* Body */}
-            <Box sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase' }}>From</Typography>
-                  <Typography sx={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 700 }} noWrap>{route?.from_point?.name || 'Origin'}</Typography>
-                </Box>
-                <FlightIcon sx={{ color: '#e17b8f', transform: 'rotate(90deg)', opacity: 0.5, mt: 1, mx: 1, flexShrink: 0 }} />
-                <Box sx={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-                  <Typography sx={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase' }}>To</Typography>
-                  <Typography sx={{ fontSize: '0.85rem', color: '#e2e8f0', fontWeight: 700 }} noWrap>{route?.to_point?.name || 'Destination'}</Typography>
-                </Box>
-              </Box>
-              
-              <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)', borderStyle: 'dashed', my: 2 }} />
-              
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                <Box>
-                  <Typography sx={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase' }}>Flight</Typography>
-                  <Typography sx={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 700 }}>SP-{Math.floor(Math.random() * 900) + 100}</Typography>
-                </Box>
-                <Box>
-                  <Typography sx={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase' }}>Gate</Typography>
-                  <Typography sx={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 700 }}>04</Typography>
-                </Box>
-                <Box>
-                  <Typography sx={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase' }}>Boarding</Typography>
-                  <Typography sx={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 700 }}>10 Min</Typography>
-                </Box>
-              </Box>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, background: 'rgba(34, 197, 94, 0.1)', p: 1.5, borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-                <WorkspacePremiumIcon sx={{ color: '#4ade80', fontSize: 18 }} />
-                <Typography sx={{ color: '#4ade80', fontSize: '0.7rem', fontWeight: 600 }}>
-                  Zero Emission Flight - 4.2kg CO₂ Saved
-                </Typography>
-              </Box>
-            </Box>
-
-            {/* QR Code */}
-            <Box sx={{ background: 'rgba(255,255,255,0.02)', p: 3, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <QrCode2Icon sx={{ fontSize: 64, color: '#e17b8f', opacity: 0.9 }} />
-              <Typography sx={{ fontSize: '0.6rem', color: '#64748b', mt: 1, letterSpacing: '0.1em' }}>
-                SCAN AT HELIPAD
-              </Typography>
             </Box>
           </Box>
         </Fade>

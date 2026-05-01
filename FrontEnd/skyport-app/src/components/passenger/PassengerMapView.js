@@ -22,11 +22,13 @@ import { getMapStyle, hasMapboxToken } from '../../utils/mapStyle';
 // Adjusted to push the city slightly down, centering it better.
 const ISTANBUL_CENTER = [28.9850, 41.0250];
 const ISTANBUL_ZOOM = 10.5;
-const ISTANBUL_AIRSPACE_BOUNDS = {
-  west: 28.45,
-  east: 29.95,
-  south: 40.75,
-  north: 41.65,
+
+// Wider initial bounds for Istanbul and surroundings
+const INITIAL_AIRSPACE_BOUNDS = {
+  west: 27.50,
+  east: 30.50,
+  south: 40.00,
+  north: 42.00,
 };
 const emptyCollection = { type: 'FeatureCollection', features: [] };
 
@@ -161,6 +163,33 @@ const PassengerMapView = ({
   const [showControlled, setShowControlled] = useState(true);
   const [mapControlsOpen, setMapControlsOpen] = useState(false);
 
+  // ── Fetch Airspace Data ────────────────────────────────────────────────────
+  const fetchAirspace = (bounds) => {
+    if (!map.current) return;
+    const source = map.current.getSource('passenger-airspace-overlay');
+    if (!source) return;
+
+    axios.get('/api/geodata/airspace', { params: bounds })
+      .then((response) => {
+        source.setData(response.data);
+        setAirspaceSummary(response.data.summary || null);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch airspace data:', err);
+      });
+  };
+
+  const updateAirspaceFromMap = () => {
+    if (!map.current) return;
+    const b = map.current.getBounds();
+    fetchAirspace({
+      west: b.getWest(),
+      east: b.getEast(),
+      south: b.getSouth(),
+      north: b.getNorth(),
+    });
+  };
+
   // ── Initialize map ────────────────────────────────────────────────────────
   useEffect(() => {
     if (map.current) return;
@@ -266,6 +295,7 @@ const PassengerMapView = ({
           'circle-stroke-color': '#ffffff',
         },
       });
+      map.current.on('moveend', updateAirspaceFromMap);
     });
 
     map.current.on('move', () => {
@@ -285,21 +315,10 @@ const PassengerMapView = ({
     };
   }, []);
 
-  // ── Update vertiport markers when filteredVertiports changes ─────────────
+  // ── Initial Airspace Fetch ──────────────────────────────────────────────
   useEffect(() => {
     if (!mapLoaded || !map.current) return;
-    const source = map.current.getSource('passenger-airspace-overlay');
-    if (!source) return;
-
-    axios.get('/api/geodata/airspace', { params: ISTANBUL_AIRSPACE_BOUNDS })
-      .then((response) => {
-        source.setData(response.data);
-        setAirspaceSummary(response.data.summary || null);
-      })
-      .catch(() => {
-        source.setData(emptyCollection);
-        setAirspaceSummary(null);
-      });
+    fetchAirspace(INITIAL_AIRSPACE_BOUNDS);
   }, [mapLoaded]);
 
   useEffect(() => {

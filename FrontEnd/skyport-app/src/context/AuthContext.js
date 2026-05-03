@@ -95,6 +95,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem(TOKEN_KEY);
     delete axios.defaults.headers.common['Authorization'];
     setUser(null);
+    window.location.replace('http://localhost:3000/');
   };
 
   return (

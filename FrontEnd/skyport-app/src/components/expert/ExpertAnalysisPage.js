@@ -41,7 +41,6 @@ import SatelliteAltIcon from '@mui/icons-material/SatelliteAlt';
 import ScienceIcon from '@mui/icons-material/Science';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
 import {
   Bar,
   BarChart,
@@ -78,10 +77,11 @@ const compareDescriptions = {
   nfz: 'Higher is better. A high score means the cell is farther from NFZ-related risk. It does not mean the cell is inside an NFZ.',
 };
 const emptyCollection = { type: 'FeatureCollection', features: [] };
+const EXPERT_ROUTE_WIND_LIMIT = 60;
 const DEFAULT_EXPERT_ROUTE = {
   fromName: 'Taksim Central Vertiport',
   toName: 'Uskudar Ferry Vertiport',
-  maxWindKmh: 35,
+  windLimitKmh: EXPERT_ROUTE_WIND_LIMIT,
 };
 const DEFAULT_ROUTE_POINTS = {
   from: { lat: 41.0369, lng: 28.985, name: 'Taksim Central Vertiport' },
@@ -157,9 +157,20 @@ const statusChipSx = (status) => {
 };
 
 const scoreColor = (score) => {
-  if (score >= 75) return '#22c55e';
-  if (score >= 50) return '#f59e0b';
-  return '#ef4444';
+  if (score >= 95) return '#16a34a';
+  if (score >= 80) return '#22c55e';
+  if (score >= 60) return '#f59e0b';
+  if (score >= 30) return '#ef4444';
+  return '#991b1b';
+};
+
+const scoreClassLabel = (scoreClass) => {
+  if (scoreClass === 'best_fit') return 'Best Fit';
+  if (scoreClass === 'strong') return 'Strong';
+  if (scoreClass === 'moderate') return 'Moderate';
+  if (scoreClass === 'low') return 'Low';
+  if (scoreClass === 'unsuitable') return 'Unsuitable';
+  return scoreClass || 'n/a';
 };
 
 const bboxToFeature = (bbox) => ({
@@ -278,6 +289,62 @@ const readFeatureCriteriaScores = (props) => {
   return {};
 };
 
+const readCriteriaBreakdown = (candidate) => {
+  const breakdown = candidate?.criteria_breakdown;
+  if (breakdown && typeof breakdown === 'object') return breakdown;
+  if (typeof breakdown === 'string') {
+    try {
+      return JSON.parse(breakdown);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+};
+
+const readWeightedValues = (candidate) => {
+  const weighted = readCriteriaBreakdown(candidate)?.weighted_values;
+  return weighted && typeof weighted === 'object' ? weighted : {};
+};
+
+const readPriorityVector = (candidate) => {
+  const weights = readCriteriaBreakdown(candidate)?.priority_vector;
+  return weights && typeof weights === 'object' ? weights : {};
+};
+
+const criterionImpactRows = (candidate) => {
+  const scores = readCriteriaScores(candidate);
+  const weighted = readWeightedValues(candidate);
+  const weights = readPriorityVector(candidate);
+  return Object.keys(criteriaLabels).map((key) => ({
+    key,
+    score: Number(scores[key] || 0),
+    weight: Number(weights[key] || 0),
+    impact: Number(weighted[key] || 0),
+  }));
+};
+
+const explainCriterionContext = (candidate, criterion) => {
+  const context = readCriteriaBreakdown(candidate)?.criteria_context?.[criterion];
+  if (!context || typeof context !== 'object') return null;
+  if (criterion === 'nfz') {
+    if (context.intersects_nfz) return 'This cell intersects an NFZ, so the final suitability is forced to 0.';
+    if (context.min_distance_km !== undefined && context.min_distance_km !== null) {
+      return `Nearest NFZ distance: ${Number(context.min_distance_km).toFixed(2)} km.`;
+    }
+  }
+  if (criterion === 'obstacle' && context.obstacle_count !== undefined) {
+    return `Obstacle signal count: ${context.obstacle_count}.`;
+  }
+  if (criterion === 'transport' && context.transport_score !== undefined) {
+    return `Transport access index: ${Number(context.transport_score).toFixed(2)}.`;
+  }
+  if (criterion === 'land_use' && context.land_use_score !== undefined) {
+    return `Land-use suitability index: ${Number(context.land_use_score).toFixed(2)}.`;
+  }
+  return null;
+};
+
 const compareCriterionValue = (candidate, criterion) => {
   if (criterion === 'total') return Math.round(candidate?.suitability_score || 0);
   return Math.round((readCriteriaScores(candidate)[criterion] || 0) * 100);
@@ -306,6 +373,26 @@ const compareInsightText = (rankedCandidates, criterion) => {
   return `${baseText} All compared candidates are currently tied on this criterion.`;
 };
 
+const routeWeatherSafetyLimit = (routeResult) => {
+  if (!routeResult) return `${EXPERT_ROUTE_WIND_LIMIT.toFixed(1)} km/h`;
+  return `${EXPERT_ROUTE_WIND_LIMIT.toFixed(1)} km/h`;
+};
+
+const routeCriticalWeatherMetric = (routeResult) => {
+  if (!routeResult?.weather) return 'n/a';
+  const candidates = [
+    ['10m wind', routeResult.weather.wind_kmh],
+    ['Wind gust', routeResult.weather.wind_gusts_kmh],
+    ['80m wind', routeResult.weather.wind_80m_kmh],
+    ['120m wind', routeResult.weather.wind_120m_kmh],
+  ].filter((item) => item[1] !== undefined && item[1] !== null);
+  if (!candidates.length) return 'n/a';
+  const [label, value] = candidates.reduce((best, current) => (
+    Number(current[1]) > Number(best[1]) ? current : best
+  ));
+  return `${label} - ${Number(value).toFixed(1)} km/h`;
+};
+
 const applyRasterBasemapMode = (instance, mode) => {
   if (!instance?.getLayer('osm') || !instance?.getLayer('satellite')) return;
   const showSatellite = mode === 'satellite';
@@ -332,8 +419,32 @@ const applyRasterBasemapMode = (instance, mode) => {
   instance.setPaintProperty('osm', 'raster-contrast', 0.18);
 };
 
+const fitBoundsSafely = (instance, bounds, options = {}) => {
+  if (!instance || !bounds || bounds.isEmpty()) return;
+  const { padding = 72, duration = 900, maxZoom, pitch, bearing } = options;
+  const baseOptions = { padding, duration };
+  if (maxZoom !== undefined) baseOptions.maxZoom = maxZoom;
+
+  try {
+    if (hasMapboxToken()) {
+      instance.fitBounds(bounds, {
+        ...baseOptions,
+        ...(pitch !== undefined ? { pitch } : {}),
+        ...(bearing !== undefined ? { bearing } : {}),
+      });
+      return;
+    }
+    instance.fitBounds(bounds, baseOptions);
+  } catch (_err) {
+    try {
+      instance.fitBounds(bounds, baseOptions);
+    } catch (_innerErr) {
+      // Keep the current view instead of crashing the expert page.
+    }
+  }
+};
+
 const ExpertAnalysisPage = () => {
-  const navigate = useNavigate();
   const { logout, user } = useAuth();
   const mapContainer = useRef(null);
   const map = useRef(null);
@@ -385,13 +496,21 @@ const ExpertAnalysisPage = () => {
   const [selectedCompareCells, setSelectedCompareCells] = useState([]);
   const [compareCriteria, setCompareCriteria] = useState('total');
   const [manualCompareCriteria, setManualCompareCriteria] = useState('total');
-  const [windVisible, setWindVisible] = useState(false);
-  const [buildings3DVisible, setBuildings3DVisible] = useState(true);
+  const [windVisible, setWindVisible] = useState(true);
+  const [windSnapshot, setWindSnapshot] = useState(null);
+  const [savedHistory, setSavedHistory] = useState([]);
+  const [saveDraftName, setSaveDraftName] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const pulseRef = useRef(null);
   const windFrameRef = useRef(null);
 
   const weightTotal = useMemo(() => Object.values(weights).reduce((sum, value) => sum + Number(value || 0), 0), [weights]);
   const canRunAnalysis = ingestJob?.status === 'success' || ingestJob?.status === 'partial_success';
+
+  useEffect(() => {
+    if (!analysisResult) return;
+    setSaveDraftName((prev) => prev || analysisResult.region_name || regionName || 'Saved Analysis');
+  }, [analysisResult, regionName]);
 
   const fetchAirspace = useCallback(async (bounds) => {
     if (!map.current) return;
@@ -430,28 +549,15 @@ const ExpertAnalysisPage = () => {
     instance.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
     instance.on('error', (event) => {
       const message = event?.error?.message || 'Map could not load.';
+      if (message.includes('layers.best-candidate-flash.paint.fill-extrusion-opacity: data expressions not supported')) {
+        return;
+      }
       setMapNotice(`Map service warning: ${message}`);
     });
     instance.on('mousemove', (event) => setCoords({ lng: event.lngLat.lng, lat: event.lngLat.lat }));
     instance.on('load', () => {
       setMapReady(true);
       instance.resize();
-
-      // High-Impact 3D City Backdrop
-      instance.addLayer({
-        id: '3d-buildings',
-        source: 'composite',
-        'source-layer': 'building',
-        filter: ['==', 'extrude', 'true'],
-        type: 'fill-extrusion',
-        minzoom: 13,
-        paint: {
-          'fill-extrusion-color': '#475569',
-          'fill-extrusion-height': ['get', 'height'],
-          'fill-extrusion-base': ['get', 'min_height'],
-          'fill-extrusion-opacity': 0.45,
-        },
-      });
 
       instance.addSource('bbox-source', { type: 'geojson', data: emptyCollection });
       instance.addLayer({
@@ -498,30 +604,19 @@ const ExpertAnalysisPage = () => {
       });
       instance.addLayer({
         id: 'analysis-heatmap-fill',
-        type: 'fill-extrusion',
+        type: 'fill',
         source: 'analysis-heatmap',
         paint: {
-          'fill-extrusion-color': [
-            'interpolate',
-            ['linear'],
+          'fill-color': [
+            'step',
             ['get', 'suitability_score'],
-            0, 'rgba(239, 68, 68, 0.15)',
-            25, '#ff0000', // Pure Red - LOW
-            50, '#ffcc00', // Yellow/Orange - NEUTRAL
-            80, '#00ff00', // Pure Green - GOOD
-            100, '#00ff88', // Neon Green - PEAK
+            '#991b1b',
+            30, '#ef4444',
+            60, '#f59e0b',
+            80, '#22c55e',
+            95, '#16a34a',
           ],
-          'fill-extrusion-height': [
-            'interpolate',
-            ['linear'],
-            ['get', 'suitability_score'],
-            0, 0,
-            50, 40,
-            70, 120,
-            100, 350,
-          ],
-          'fill-extrusion-base': 0,
-          'fill-extrusion-opacity': 0.55,
+          'fill-opacity': 0.42,
         },
       });
       instance.addLayer({
@@ -625,13 +720,11 @@ const ExpertAnalysisPage = () => {
       instance.addSource('best-candidate', { type: 'geojson', data: emptyCollection });
       instance.addLayer({
         id: 'best-candidate-flash',
-        type: 'fill-extrusion',
+        type: 'fill',
         source: 'best-candidate',
         paint: {
-          'fill-extrusion-color': '#00ff88',
-          'fill-extrusion-height': 400,
-          'fill-extrusion-base': 0,
-          'fill-extrusion-opacity': ['get', 'opacity'],
+          'fill-color': '#00ff88',
+          'fill-opacity': ['get', 'opacity'],
         },
       });
 
@@ -642,9 +735,9 @@ const ExpertAnalysisPage = () => {
         source: 'wind-lines',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': '#ffffff',
-          'line-width': 1.5,
-          'line-opacity': 0.15,
+          'line-color': '#60a5fa',
+          'line-width': 3.2,
+          'line-opacity': 0.72,
           'line-dasharray': [2, 4],
         },
       });
@@ -710,18 +803,54 @@ const ExpertAnalysisPage = () => {
   useEffect(() => {
     if (!mapReady || !map.current) return;
     const instance = map.current;
-    if (instance.getLayer('3d-buildings')) {
-      instance.setLayoutProperty('3d-buildings', 'visibility', buildings3DVisible ? 'visible' : 'none');
-    }
-  }, [buildings3DVisible, mapReady]);
-
-  useEffect(() => {
-    if (!mapReady || !map.current) return;
-    const instance = map.current;
     if (instance.getLayer('wind-lines-layer')) {
       instance.setLayoutProperty('wind-lines-layer', 'visibility', windVisible ? 'visible' : 'none');
     }
   }, [windVisible, mapReady]);
+
+  useEffect(() => {
+    if (!mapReady || !map.current || !windVisible) return;
+    let active = true;
+
+    const loadWindSnapshot = async () => {
+      try {
+        const center = map.current?.getCenter();
+        if (!center) return;
+        const response = await axios.get('/api/geodata/wind', {
+          params: { lat: center.lat, lng: center.lng },
+        });
+        if (active) setWindSnapshot(response.data);
+      } catch (_err) {
+        if (active) {
+          setWindSnapshot({
+            source: 'fallback',
+            condition: 'standard',
+            wind_kmh: 12,
+            wind_direction_deg: 70,
+            wind_gusts_kmh: null,
+            wind_80m_kmh: 12,
+            wind_80m_direction_deg: 70,
+            wind_120m_kmh: 12,
+            wind_120m_direction_deg: 70,
+            temperature_2m_c: null,
+            precipitation_mm: null,
+            visibility_m: null,
+            weather_code: null,
+            is_fallback: true,
+            is_safe: true,
+            warning: 'Live wind feed unavailable. Showing standard directional flow.',
+          });
+        }
+      }
+    };
+
+    loadWindSnapshot();
+    const intervalId = window.setInterval(loadWindSnapshot, 300000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [mapReady, windVisible]);
 
   useEffect(() => {
     if (!mapReady || !map.current) return;
@@ -754,33 +883,57 @@ const ExpertAnalysisPage = () => {
     }
 
     const bounds = ISTANBUL_AIRSPACE_BOUNDS;
+    const directionDeg = Number(
+      windSnapshot?.wind_80m_direction_deg
+      ?? windSnapshot?.wind_direction_deg
+      ?? windSnapshot?.wind_120m_direction_deg
+      ?? 70
+    );
+    const speedKmh = Number(
+      windSnapshot?.wind_80m_kmh
+      ?? windSnapshot?.wind_kmh
+      ?? windSnapshot?.wind_120m_kmh
+      ?? 12
+    );
+    const angle = ((directionDeg - 90) * Math.PI) / 180;
+    const lngScale = 0.032 + Math.min(speedKmh, 80) / 2500;
+    const latScale = 0.016 + Math.min(speedKmh, 80) / 5000;
     const lines = [];
-    for (let lat = bounds.south; lat <= bounds.north; lat += 0.015) {
-      lines.push({
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: [[bounds.west, lat], [bounds.east, lat]],
-        },
-      });
+    for (let lat = bounds.south + 0.03; lat <= bounds.north; lat += 0.07) {
+      for (let lng = bounds.west + 0.04; lng <= bounds.east; lng += 0.11) {
+        const dx = Math.cos(angle) * lngScale;
+        const dy = Math.sin(angle) * latScale;
+        lines.push({
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [[lng - dx, lat - dy], [lng + dx, lat + dy]],
+          },
+        });
+      }
     }
 
     let dashOffset = 0;
     const animateWind = () => {
       dashOffset = (dashOffset + 0.15) % 6;
       if (instance.getLayer('wind-lines-layer')) {
-        instance.setPaintProperty('wind-lines-layer', 'line-dasharray', [0.1, dashOffset, 2, 6 - dashOffset]);
+        instance.setPaintProperty('wind-lines-layer', 'line-dasharray', [0.2, dashOffset, 1.4, Math.max(1, 6 - dashOffset)]);
+        instance.setPaintProperty('wind-lines-layer', 'line-width', Math.max(2.8, Math.min(5.4, 2.2 + speedKmh / 22)));
+        instance.setPaintProperty('wind-lines-layer', 'line-opacity', windSnapshot?.is_fallback ? 0.6 : 0.9);
       }
       windFrameRef.current = requestAnimationFrame(animateWind);
     };
 
     instance.getSource('wind-lines')?.setData({ type: 'FeatureCollection', features: lines });
+    if (instance.getLayer('wind-lines-layer')) {
+      instance.moveLayer('wind-lines-layer');
+    }
     animateWind();
 
     return () => {
       if (windFrameRef.current) cancelAnimationFrame(windFrameRef.current);
     };
-  }, [mapReady, windVisible]);
+  }, [mapReady, windVisible, windSnapshot]);
 
   useEffect(() => {
     if (!mapReady || !map.current) return;
@@ -883,13 +1036,22 @@ const ExpertAnalysisPage = () => {
     if (!source) return;
     source.setData(geojson || emptyCollection);
     if (geojson?.features?.length) {
-      const bounds = new mapboxgl.LngLatBounds();
-      geojson.features.forEach((feature) => feature.geometry.coordinates[0].forEach((coord) => bounds.extend(coord)));
-      map.current.fitBounds(bounds, { padding: 72, duration: 1200, pitch: 45, bearing: -15 });
+      const polygonFeatures = geojson.features.filter((feature) => (
+        Array.isArray(feature?.geometry?.coordinates?.[0]) && feature.geometry.coordinates[0].length > 0
+      ));
+      if (polygonFeatures.length > 0) {
+        const bounds = new mapboxgl.LngLatBounds();
+        polygonFeatures.forEach((feature) => {
+          feature.geometry.coordinates[0].forEach((coord) => {
+            if (Array.isArray(coord) && coord.length >= 2) bounds.extend(coord);
+          });
+        });
+        fitBoundsSafely(map.current, bounds, { padding: 72, duration: 1200, pitch: 45, bearing: -15 });
+      }
 
       // Prepare pulse source for top 3 and beacon for #1
-      const top3 = geojson.features
-        .filter((f) => f.properties.suitability_score >= 85)
+      const top3 = polygonFeatures
+        .filter((f) => f.properties.suitability_score >= 80)
         .slice(0, 3)
         .map((f, i) => {
           const coords = f.geometry.coordinates[0];
@@ -903,9 +1065,9 @@ const ExpertAnalysisPage = () => {
         });
  
       // Robust Max Score Finding
-      const rank1 = geojson.features.reduce((prev, curr) => 
+      const rank1 = polygonFeatures.reduce((prev, curr) => 
         (prev.properties.suitability_score > curr.properties.suitability_score) ? prev : curr
-      );
+      , polygonFeatures[0]);
 
       let step = 0;
       const animatePulse = () => {
@@ -936,6 +1098,11 @@ const ExpertAnalysisPage = () => {
         pulseRef.current = requestAnimationFrame(animatePulse);
       };
       if (pulseRef.current) cancelAnimationFrame(pulseRef.current);
+      if (polygonFeatures.length === 0) {
+        map.current?.getSource('top-pulse')?.setData(emptyCollection);
+        map.current?.getSource('best-candidate')?.setData(emptyCollection);
+        return;
+      }
       if (top3.length > 0) animatePulse();
     }
   }, []);
@@ -973,7 +1140,7 @@ const ExpertAnalysisPage = () => {
     map.current?.setPaintProperty('expert-route-line', 'line-color', routeLineColor(route));
     const bounds = new mapboxgl.LngLatBounds();
     route.coordinates.forEach((coord) => bounds.extend(coord));
-    map.current.fitBounds(bounds, { padding: 82, duration: 900 });
+    fitBoundsSafely(map.current, bounds, { padding: 82, duration: 900 });
 
     if (aircraftFrameRef.current) cancelAnimationFrame(aircraftFrameRef.current);
     if (aircraftMarkerRef.current) aircraftMarkerRef.current.remove();
@@ -1194,7 +1361,7 @@ const ExpertAnalysisPage = () => {
       if (map.current && Array.isArray(coordinates) && coordinates.length > 0) {
         const bounds = new mapboxgl.LngLatBounds();
         coordinates.forEach((coord) => bounds.extend(coord));
-        map.current.fitBounds(bounds, { padding: 120, duration: 800, pitch: 45, bearing: -15, maxZoom: 14.5 });
+        fitBoundsSafely(map.current, bounds, { padding: 120, duration: 800, pitch: 45, bearing: -15, maxZoom: 14.5 });
       }
     } catch (err) {
       setError(err.response?.data?.message || err.response?.data?.detail || err.message);
@@ -1377,6 +1544,123 @@ const ExpertAnalysisPage = () => {
     }
   };
 
+  const loadSavedHistory = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/analysis/history');
+      setSavedHistory(Array.isArray(response.data?.items) ? response.data.items : []);
+    } catch (_err) {
+      setSavedHistory([]);
+    }
+  }, []);
+
+  const saveAnalysisToProfile = useCallback(async () => {
+    if (!analysisResult?.analysis_id) return;
+    if (!saveDraftName.trim()) {
+      setError('Enter a name before saving this analysis.');
+      return;
+    }
+    setBusy('save');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const center = map.current?.getCenter();
+      const payload = {
+        name: saveDraftName.trim(),
+        map_view: center ? {
+          center: [Number(center.lng.toFixed(6)), Number(center.lat.toFixed(6))],
+          zoom: Number((map.current?.getZoom() || ISTANBUL_ZOOM).toFixed(2)),
+          pitch: Number((map.current?.getPitch() || 0).toFixed(2)),
+          bearing: Number((map.current?.getBearing() || 0).toFixed(2)),
+        } : {},
+        selected_bounds: bbox || {},
+      };
+      await axios.post(`/api/analysis/${analysisResult.analysis_id}/save`, payload);
+      await loadSavedHistory();
+      setSuccessMessage('Analysis successfully saved to your profile.');
+      setActiveWorkspace('profile');
+    } catch (err) {
+      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+    } finally {
+      setBusy('');
+    }
+  }, [analysisResult, bbox, loadSavedHistory, saveDraftName]);
+
+  const downloadAnalysisExport = useCallback(async (format) => {
+    if (!analysisResult?.analysis_id) return;
+    setBusy('export');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const exportResponse = await axios.get(`/api/analysis/${analysisResult.analysis_id}/export`, {
+        params: { format },
+      });
+      const downloadUrl = exportResponse.data?.download_url;
+      if (!downloadUrl) throw new Error('Export download link was not returned by the server.');
+      const fileName = exportResponse.data?.file_name || `analysis-${analysisResult.analysis_id}.${format}`;
+      const fileResponse = await axios.get(downloadUrl, { responseType: 'blob' });
+      const objectUrl = window.URL.createObjectURL(fileResponse.data);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(objectUrl);
+      setSuccessMessage('Report successfully exported.');
+      setActiveWorkspace('profile');
+    } catch (err) {
+      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+    } finally {
+      setBusy('');
+    }
+  }, [analysisResult]);
+
+  const loadSavedAnalysis = useCallback(async (historyItem) => {
+    if (!historyItem?.analysis_id) return;
+    setBusy('history');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const [resultResponse, heatmapResponse] = await Promise.all([
+        axios.get(`/api/analysis/${historyItem.analysis_id}/result`),
+        axios.get(`/api/analysis/${historyItem.analysis_id}/heatmap`),
+      ]);
+      setAnalysisResult(resultResponse.data);
+      setAnalysis({
+        analysis_id: historyItem.analysis_id,
+        status: resultResponse.data.status,
+      });
+      if (historyItem?.saved_payload?.criteria_weights) {
+        setWeights(historyItem.saved_payload.criteria_weights);
+      }
+      if (historyItem?.saved_payload?.selected_bounds) {
+        setBbox(historyItem.saved_payload.selected_bounds);
+      }
+      if (historyItem?.saved_name) {
+        setSaveDraftName(historyItem.saved_name);
+      }
+      setHeatmap(heatmapResponse.data);
+      setActiveWorkspace('results');
+
+      const selectedBounds = historyItem?.saved_payload?.selected_bounds;
+      if (map.current && selectedBounds?.west !== undefined) {
+        const bounds = new mapboxgl.LngLatBounds(
+          [selectedBounds.west, selectedBounds.south],
+          [selectedBounds.east, selectedBounds.north],
+        );
+        fitBoundsSafely(map.current, bounds, { padding: 72, duration: 900 });
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+    } finally {
+      setBusy('');
+    }
+  }, [setHeatmap]);
+
+  useEffect(() => {
+    loadSavedHistory();
+  }, [loadSavedHistory]);
+
   const runExpertRouteSafety = async () => {
     setActiveWorkspace('route');
     setBusy('route');
@@ -1398,7 +1682,7 @@ const ExpertAnalysisPage = () => {
         constraints: {
           avoid_nfz: true,
           avoid_obstacles: true,
-          max_wind_kmh: Number(routeForm.maxWindKmh),
+          max_wind_kmh: Number(routeForm.windLimitKmh || EXPERT_ROUTE_WIND_LIMIT),
         },
       });
       setRouteResult(response.data);
@@ -1412,7 +1696,6 @@ const ExpertAnalysisPage = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/');
   };
 
   const renderComparisonCard = (result, title, criteria, onCriteriaChange) => {
@@ -1629,6 +1912,7 @@ const ExpertAnalysisPage = () => {
           <Tab icon={<ScienceIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Weights" value="weights" />
           <Tab icon={<RouteIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Route Safety" value="route" />
           <Tab icon={<AnalyticsIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Results" value="results" />
+          <Tab icon={<BusinessIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Profile" value="profile" />
         </Tabs>
       </Paper>
 
@@ -1806,7 +2090,15 @@ const ExpertAnalysisPage = () => {
                   Defaults
                 </Button>
               </Stack>
-              <TextField label="Max Wind km/h" size="small" type="number" value={routeForm.maxWindKmh} onChange={(event) => setRouteForm((prev) => ({ ...prev, maxWindKmh: event.target.value }))} sx={fieldSx} />
+              <TextField
+                label="Operational Wind Limit (km/h)"
+                size="small"
+                type="number"
+                value={routeForm.windLimitKmh}
+                onChange={(event) => setRouteForm((prev) => ({ ...prev, windLimitKmh: event.target.value }))}
+                helperText="Measured weather is compared against this operational threshold."
+                sx={fieldSx}
+              />
               <Button fullWidth variant="contained" startIcon={<RouteIcon />} onClick={runExpertRouteSafety} disabled={Boolean(busy)} sx={{ bgcolor: '#7c3aed', borderRadius: '8px', textTransform: 'none', fontWeight: 800, '&:hover': { bgcolor: '#6d28d9' } }}>
                 {busy === 'route' ? <CircularProgress size={22} color="inherit" /> : 'Run Route Safety Check'}
               </Button>
@@ -1819,6 +2111,8 @@ const ExpertAnalysisPage = () => {
                     ['Distance', `${Number(routeResult.distance_km).toFixed(2)} km`],
                     ['Duration', `${routeResult.duration_min} min`],
                     ['Weather', routeResult.weather?.source === 'open_meteo' ? 'Open-Meteo' : 'Fallback'],
+                    ['Safety Limit', routeWeatherSafetyLimit(routeResult)],
+                    ['Critical Metric', routeResult.blocking_type === 'weather' ? routeCriticalWeatherMetric(routeResult) : 'n/a'],
                     ['10m Wind', routeResult.weather?.wind_kmh !== undefined && routeResult.weather?.wind_kmh !== null ? `${Number(routeResult.weather.wind_kmh).toFixed(1)} km/h` : 'n/a'],
                     ['80m Wind', routeResult.weather?.wind_80m_kmh !== undefined && routeResult.weather?.wind_80m_kmh !== null ? `${Number(routeResult.weather.wind_80m_kmh).toFixed(1)} km/h` : 'n/a'],
                     ['120m Wind', routeResult.weather?.wind_120m_kmh !== undefined && routeResult.weather?.wind_120m_kmh !== null ? `${Number(routeResult.weather.wind_120m_kmh).toFixed(1)} km/h` : 'n/a'],
@@ -1914,24 +2208,60 @@ const ExpertAnalysisPage = () => {
                               {selectedCellDetail.cell_index}
                             </Typography>
                             <Typography sx={{ color: '#94a3b8', fontSize: '0.7rem' }}>
-                              Rank #{selectedCellDetail.rank ?? 'n/a'} • {selectedCellDetail.score_class}
+                              Rank #{selectedCellDetail.rank ?? 'n/a'} • {scoreClassLabel(selectedCellDetail.score_class)}
                             </Typography>
                           </Box>
                           <Typography sx={{ color: scoreColor(selectedCellDetail.suitability_score), fontWeight: 900, fontSize: '0.92rem' }}>
                             {Number(selectedCellDetail.suitability_score).toFixed(1)}%
                           </Typography>
                         </Box>
+                        {readCriteriaBreakdown(selectedCellDetail)?.hard_constraint_violation && (
+                          <Alert severity="error" sx={{ fontSize: '0.72rem' }}>
+                            NFZ hard constraint triggered. This cell can score well on some criteria but it is still operationally unsafe.
+                          </Alert>
+                        )}
+                        {readCriteriaBreakdown(selectedCellDetail)?.method && (
+                          <Typography sx={{ color: '#94a3b8', fontSize: '0.68rem', lineHeight: 1.5 }}>
+                            Method: {readCriteriaBreakdown(selectedCellDetail).method}
+                            {readCriteriaBreakdown(selectedCellDetail)?.display_score_method
+                              ? ` • Display score: ${readCriteriaBreakdown(selectedCellDetail).display_score_method}`
+                              : ''}
+                          </Typography>
+                        )}
                         <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
-                        {Object.entries(readCriteriaScores(selectedCellDetail)).map(([key, value]) => (
-                          <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem' }}>
-                              {criteriaLabels[key] || key}
-                            </Typography>
-                            <Typography sx={{ color: '#e2e8f0', fontSize: '0.72rem', fontWeight: 800 }}>
-                              {Math.round(Number(value || 0) * 100)}%
-                            </Typography>
-                          </Box>
-                        ))}
+                        <Typography sx={{ color: '#cbd5e1', fontSize: '0.74rem', fontWeight: 800 }}>
+                          Criterion impact on this score
+                        </Typography>
+                        {criterionImpactRows(selectedCellDetail)
+                          .sort((a, b) => b.impact - a.impact)
+                          .map((row) => (
+                            <Box key={row.key} sx={{ display: 'flex', flexDirection: 'column', gap: 0.3, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: '8px', px: 1, py: 0.8 }}>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                                <Typography sx={{ color: '#e2e8f0', fontSize: '0.72rem', fontWeight: 700 }}>
+                                  {criteriaLabels[row.key] || row.key}
+                                </Typography>
+                                <Typography sx={{ color: '#f8fafc', fontSize: '0.72rem', fontWeight: 800 }}>
+                                  Impact {Math.round(row.impact * 100)}%
+                                </Typography>
+                              </Box>
+                              <Typography sx={{ color: '#94a3b8', fontSize: '0.68rem' }}>
+                                Raw criterion score {Math.round(row.score * 100)}% • Weight {Math.round(row.weight * 100)}%
+                              </Typography>
+                              {explainCriterionContext(selectedCellDetail, row.key) && (
+                                <Typography sx={{ color: '#64748b', fontSize: '0.66rem', lineHeight: 1.45 }}>
+                                  {explainCriterionContext(selectedCellDetail, row.key)}
+                                </Typography>
+                              )}
+                            </Box>
+                          ))}
+                        {readCriteriaBreakdown(selectedCellDetail)?.weighted_priority_score !== undefined && (
+                          <Typography sx={{ color: '#94a3b8', fontSize: '0.68rem', lineHeight: 1.5 }}>
+                            Weighted priority score: {(Number(readCriteriaBreakdown(selectedCellDetail).weighted_priority_score) * 100).toFixed(1)}%
+                            {readCriteriaBreakdown(selectedCellDetail)?.topsis_closeness !== undefined
+                              ? ` • TOPSIS closeness: ${(Number(readCriteriaBreakdown(selectedCellDetail).topsis_closeness) * 100).toFixed(1)}%`
+                              : ''}
+                          </Typography>
+                        )}
                       </Stack>
                     )}
                   </Box>
@@ -2011,6 +2341,115 @@ const ExpertAnalysisPage = () => {
                   {compareResult && renderComparisonCard(compareResult, 'Top Candidate Comparison', compareCriteria, setCompareCriteria)}
                 </>
               )}
+            </Stack>
+          </Paper>
+        </Box>
+      </Fade>
+
+      <Fade in={activeWorkspace === 'profile'}>
+        <Box sx={{ position: 'absolute', inset: 0, zIndex: 19, pointerEvents: 'none' }}>
+          <Paper sx={{ ...workspacePanelSx, width: { xs: 'calc(100% - 32px)', md: 430 }, pointerEvents: activeWorkspace === 'profile' ? 'auto' : 'none' }}>
+            <Stack spacing={2}>
+              <Typography sx={{ color: '#e2e8f0', fontWeight: 800 }}>Saved Analyses & Export</Typography>
+              {!!successMessage && <Alert severity="success" onClose={() => setSuccessMessage('')} sx={{ fontSize: '0.76rem' }}>{successMessage}</Alert>}
+              {!analysisResult && (
+                <Typography sx={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                  Complete an analysis first, then save it to your profile or export it as a PDF report.
+                </Typography>
+              )}
+              {analysisResult && (
+                <>
+                  <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
+                    <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>
+                      Save Analysis to Profile
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      label="Saved analysis name"
+                      value={saveDraftName}
+                      onChange={(event) => setSaveDraftName(event.target.value)}
+                      sx={{ ...fieldSx, mb: 1.1 }}
+                    />
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        variant="contained"
+                        onClick={saveAnalysisToProfile}
+                        disabled={busy === 'save'}
+                        sx={{ bgcolor: '#b65f70', color: '#fff', borderRadius: '8px', textTransform: 'none', '&:hover': { bgcolor: '#9a4c5a' } }}
+                      >
+                        {busy === 'save' ? <CircularProgress size={18} color="inherit" /> : 'Save Analysis'}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={loadSavedHistory}
+                        disabled={busy === 'save'}
+                        sx={{ color: '#94a3b8', borderColor: 'rgba(148,163,184,0.28)', borderRadius: '8px', textTransform: 'none' }}
+                      >
+                        Refresh History
+                      </Button>
+                    </Stack>
+                  </Box>
+                  <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
+                    <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>
+                      Export PDF Report
+                    </Typography>
+                    <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem', lineHeight: 1.5, mb: 1 }}>
+                      Download a styled PDF summary containing the current analysis snapshot and its top-ranked candidate cells.
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      onClick={() => downloadAnalysisExport('pdf')}
+                      disabled={busy === 'export'}
+                      sx={{ color: '#f8fafc', borderColor: 'rgba(248,250,252,0.18)', borderRadius: '8px', textTransform: 'none' }}
+                    >
+                      {busy === 'export' ? <CircularProgress size={18} color="inherit" /> : 'Export PDF'}
+                    </Button>
+                  </Box>
+                </>
+              )}
+              <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
+                <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>
+                  Saved History
+                </Typography>
+                {!savedHistory.length && (
+                  <Typography sx={{ color: '#64748b', fontSize: '0.72rem' }}>
+                    No saved analyses in your profile yet.
+                  </Typography>
+                )}
+                <Stack spacing={0.8}>
+                  {savedHistory.slice(0, 8).map((item) => (
+                    <Box
+                      key={`saved-history-${item.analysis_id}`}
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr auto',
+                        gap: 1,
+                        alignItems: 'center',
+                        bgcolor: 'rgba(255,255,255,0.03)',
+                        borderRadius: '8px',
+                        p: 1,
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ color: '#e2e8f0', fontSize: '0.76rem', fontWeight: 800 }} noWrap>
+                          {item.saved_name || item.region_name || `Analysis ${item.analysis_id}`}
+                        </Typography>
+                        <Typography sx={{ color: '#94a3b8', fontSize: '0.68rem' }}>
+                          {new Date(item.saved_at || item.created_at).toLocaleString()} · best {item.suitability_score?.toFixed?.(1) ?? item.suitability_score ?? 'n/a'}
+                        </Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => loadSavedAnalysis(item)}
+                        sx={{ color: '#60a5fa', textTransform: 'none', minWidth: 0 }}
+                      >
+                        Reload
+                      </Button>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
             </Stack>
           </Paper>
         </Box>
@@ -2110,25 +2549,6 @@ const ExpertAnalysisPage = () => {
               <DirectionsTransitIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title={buildings3DVisible ? 'Hide 3D City' : 'Show 3D City'} placement="left">
-            <IconButton
-              onClick={() => {
-                setBuildings3DVisible((prev) => !prev);
-                setMapControlsOpen(false);
-              }}
-              sx={{
-                width: 34,
-                height: 34,
-                bgcolor: buildings3DVisible ? '#dbeafe' : 'rgba(255,255,255,0.92)',
-                color: buildings3DVisible ? '#1d4ed8' : '#475569',
-                border: '1px solid rgba(148,163,184,0.18)',
-                boxShadow: '0 8px 18px rgba(15,23,42,0.12)',
-                '&:hover': { bgcolor: '#eff6ff' },
-              }}
-            >
-              <BusinessIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
           <Tooltip title={windVisible ? 'Hide Wind Flow' : 'Show Wind Flow'} placement="left">
             <IconButton
               onClick={() => {
@@ -2168,23 +2588,6 @@ const ExpertAnalysisPage = () => {
             <Typography sx={{ color: '#94a3b8', fontSize: '0.7rem' }}>{label}</Typography>
           </Box>
         ))}
-        <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.06)' }} />
-        <Button
-          fullWidth
-          size="small"
-          variant={windVisible ? 'contained' : 'outlined'}
-          onClick={() => setWindVisible(!windVisible)}
-          sx={{
-            fontSize: '0.65rem',
-            textTransform: 'none',
-            borderRadius: '6px',
-            bgcolor: windVisible ? 'rgba(182, 95, 112, 0.4)' : 'transparent',
-            borderColor: 'rgba(182, 95, 112, 0.3)',
-            color: windVisible ? '#fff' : '#94a3b8',
-          }}
-        >
-          {windVisible ? 'Hide Wind Flow' : 'Show Wind Flow'}
-        </Button>
       </Paper>
       <Modal open={jobProgress.open && (busy === 'ingest' || busy === 'analysis')} disableAutoFocus>
         <Box sx={{

@@ -115,6 +115,28 @@ def count_nfz_intersections_for_coordinates(coordinates: list[list[float]]) -> i
         return int(row["hit_count"] or 0) if row else 0
 
 
+def point_within_nfz(longitude: float, latitude: float) -> bool:
+    query = text(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM public.nfz_zones n
+            WHERE n.is_active = true
+              AND n.source NOT ILIKE 'CONTROLLED_AIRSPACE%%'
+              AND (n.effective_from IS NULL OR n.effective_from <= now())
+              AND (n.effective_to IS NULL OR n.effective_to >= now())
+              AND ST_Intersects(
+                    n.geom,
+                    ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)
+                  )
+        ) AS is_inside
+        """
+    )
+    with SessionLocal() as db:
+        row = db.execute(query, {"longitude": longitude, "latitude": latitude}).mappings().first()
+        return bool(row["is_inside"]) if row else False
+
+
 def list_nfz_intersections_for_coordinates(coordinates: list[list[float]]) -> list[dict[str, Any]]:
     query = text(
         """

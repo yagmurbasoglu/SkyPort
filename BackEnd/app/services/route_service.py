@@ -26,6 +26,17 @@ def _haversine_km(start: RoutePoint, end: RoutePoint) -> float:
     return radius_km * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 
+def _polyline_length_km(coordinates: list[list[float]]) -> float:
+    if len(coordinates) < 2:
+        return 0.0
+    total = 0.0
+    for index in range(len(coordinates) - 1):
+        start = _point_from_coordinates(coordinates[index])
+        end = _point_from_coordinates(coordinates[index + 1])
+        total += _haversine_km(start, end)
+    return total
+
+
 def _build_route_coordinates(start: RoutePoint, end: RoutePoint, *, arc_scale: float = 0.015) -> list[list[float]]:
     steps = 40
     d_lng = end.lng - start.lng
@@ -41,12 +52,34 @@ def _build_route_coordinates(start: RoutePoint, end: RoutePoint, *, arc_scale: f
     return coordinates
 
 
+def _merge_route_segments(*segments: list[list[float]]) -> list[list[float]]:
+    merged: list[list[float]] = []
+    for segment in segments:
+        for point in segment:
+            if not merged or merged[-1] != point:
+                merged.append(point)
+    return merged
+
+
 def _point_from_record(record: dict[str, Any]) -> RoutePoint:
     return RoutePoint(lat=float(record["lat"]), lng=float(record["lng"]), name=record.get("name"))
 
 
 def _point_from_coordinates(coordinates: list[float], name: str | None = None) -> RoutePoint:
     return RoutePoint(lng=float(coordinates[0]), lat=float(coordinates[1]), name=name)
+
+
+def _critical_weather_metric(weather: dict[str, Any]) -> tuple[str, float]:
+    candidates = [
+        ("10m wind", weather.get("wind_kmh")),
+        ("Wind gust", weather.get("wind_gusts_kmh")),
+        ("80m wind", weather.get("wind_80m_kmh")),
+        ("120m wind", weather.get("wind_120m_kmh")),
+    ]
+    valid = [(label, float(value)) for label, value in candidates if value is not None]
+    if not valid:
+        return "Observed wind", 0.0
+    return max(valid, key=lambda item: item[1])
 
 
 class RouteService:
@@ -118,36 +151,68 @@ class RouteService:
         if not avoid_nfz and not avoid_obstacles:
             return _build_route_coordinates(start, end)
 
+        start_in_nfz = avoid_nfz and route_repo.point_within_nfz(start.lng, start.lat)
+        end_in_nfz = avoid_nfz and route_repo.point_within_nfz(end.lng, end.lat)
+        if start_in_nfz or end_in_nfz:
+            return _build_route_coordinates(start, end, arc_scale=0.0)
+
         obstacle_features = route_repo.load_recent_building_obstacles() if avoid_obstacles else []
+        direct_distance_km = _haversine_km(start, end)
+        astar_resolution = max(32, min(54, round(direct_distance_km * 9)))
+        blocked_edge_cache: dict[tuple[tuple[float, float], tuple[float, float]], bool] = {}
 
         def is_blocked_edge(a: tuple[float, float], b: tuple[float, float]) -> bool:
+            cache_key = tuple(sorted(((round(a[0], 6), round(a[1], 6)), (round(b[0], 6), round(b[1], 6)))))
+            cached = blocked_edge_cache.get(cache_key)
+            if cached is not None:
+                return cached
             segment = [[a[0], a[1]], [b[0], b[1]]]
             if avoid_nfz and route_repo.count_nfz_intersections_for_coordinates(segment) > 0:
+                blocked_edge_cache[cache_key] = True
                 return True
             if avoid_obstacles and route_repo.list_building_obstacle_intersections_for_coordinates(
                 segment,
                 max_hits=1,
                 obstacle_features=obstacle_features,
             ):
+                blocked_edge_cache[cache_key] = True
                 return True
+            blocked_edge_cache[cache_key] = False
             return False
 
-        astar_route = find_astar_route(
-            (start.lng, start.lat),
-            (end.lng, end.lat),
-            is_blocked_edge=is_blocked_edge,
-        )
-        if astar_route and not self._route_has_blocking_geometry(
-            astar_route,
-            avoid_nfz=avoid_nfz,
-            avoid_obstacles=avoid_obstacles,
-            obstacle_features=obstacle_features,
-        ):
-            return astar_route
+        direct_line = [[start.lng, start.lat], [end.lng, end.lat]]
+        direct_nfz_hits = route_repo.list_nfz_intersections_for_coordinates(direct_line) if avoid_nfz else []
+        if direct_nfz_hits:
+            detour_route = self._build_nfz_detour_route(
+                start,
+                end,
+                direct_nfz_hits=direct_nfz_hits,
+                avoid_nfz=avoid_nfz,
+                avoid_obstacles=avoid_obstacles,
+                obstacle_features=obstacle_features,
+            )
+            if detour_route is not None:
+                return detour_route
+
+        for padding_scale, resolution_boost in ((0.16, 0), (0.36, 6), (0.7, 10)):
+            astar_route = find_astar_route(
+                (start.lng, start.lat),
+                (end.lng, end.lat),
+                is_blocked_edge=is_blocked_edge,
+                resolution=astar_resolution + resolution_boost,
+                padding_scale=padding_scale,
+            )
+            if astar_route and not self._route_has_blocking_geometry(
+                astar_route,
+                avoid_nfz=avoid_nfz,
+                avoid_obstacles=avoid_obstacles,
+                obstacle_features=obstacle_features,
+            ):
+                return astar_route
 
         best_coordinates = _build_route_coordinates(start, end)
         best_hits: int | None = None
-        for arc_scale in (0.015, -0.015, 0.035, -0.035, 0.06, -0.06, 0.09, -0.09, 0.0):
+        for arc_scale in (0.0, 0.012, -0.012, 0.02, -0.02, 0.03, -0.03, 0.045, -0.045, 0.06, -0.06):
             coordinates = _build_route_coordinates(start, end, arc_scale=arc_scale)
             hit_count = self._count_route_blockers(
                 coordinates,
@@ -161,6 +226,53 @@ class RouteService:
                 best_hits = hit_count
                 best_coordinates = coordinates
         return best_coordinates
+
+    def _build_nfz_detour_route(
+        self,
+        start: RoutePoint,
+        end: RoutePoint,
+        *,
+        direct_nfz_hits: list[dict[str, Any]],
+        avoid_nfz: bool,
+        avoid_obstacles: bool,
+        obstacle_features: list[dict[str, Any]],
+    ) -> list[list[float]] | None:
+        if not direct_nfz_hits:
+            return None
+        block_point = direct_nfz_hits[0].get("block_point") or {}
+        coordinates = block_point.get("coordinates") if isinstance(block_point, dict) else None
+        if not isinstance(coordinates, list) or len(coordinates) < 2:
+            return None
+
+        d_lng = end.lng - start.lng
+        d_lat = end.lat - start.lat
+        perp_len = sqrt((d_lng * d_lng) + (d_lat * d_lat)) or 1.0
+        perp_lng = -d_lat / perp_len
+        perp_lat = d_lng / perp_len
+
+        safe_routes: list[list[list[float]]] = []
+        for offset in (0.02, 0.035, 0.05, 0.07, 0.09, 0.12):
+            for direction in (-1.0, 1.0):
+                waypoint = RoutePoint(
+                    lng=float(coordinates[0]) + (perp_lng * offset * direction),
+                    lat=float(coordinates[1]) + (perp_lat * offset * direction),
+                    name="NFZ detour waypoint",
+                )
+                candidate = _merge_route_segments(
+                    _build_route_coordinates(start, waypoint, arc_scale=0.0),
+                    _build_route_coordinates(waypoint, end, arc_scale=0.0),
+                )
+                if not self._route_has_blocking_geometry(
+                    candidate,
+                    avoid_nfz=avoid_nfz,
+                    avoid_obstacles=avoid_obstacles,
+                    obstacle_features=obstacle_features,
+                ):
+                    safe_routes.append(candidate)
+
+        if not safe_routes:
+            return None
+        return min(safe_routes, key=_polyline_length_km)
 
     def evaluate_safety(
         self,
@@ -241,8 +353,8 @@ class RouteService:
                 conflicts.append(
                     {
                         "type": "nfz",
-                        "severity": "warning",
-                        "message": "NFZ bypass authorized (VIP Flight).",
+                        "severity": "blocker",
+                        "message": "Blocked by no-fly zone.",
                         "zone_id": hit.get("id"),
                         "zone_name": hit.get("zone_name") or hit.get("zone_code"),
                         "route_progress": float(hit["route_progress"]) if hit.get("route_progress") is not None else None,
@@ -281,8 +393,8 @@ class RouteService:
                     conflicts.append(
                         {
                             "type": "obstacle",
-                            "severity": "warning",
-                            "message": "Obstacle bypass authorized (VIP Altitude).",
+                            "severity": "blocker",
+                            "message": "Blocked by obstacle geometry.",
                             "zone_id": hit.get("id"),
                             "zone_name": hit.get("zone_name"),
                             "route_progress": float(hit["route_progress"])
@@ -307,13 +419,19 @@ class RouteService:
             weather.get("wind_120m_kmh"),
         ]
         max_weather_wind = max([float(value) for value in weather_values if value is not None] or [0.0])
-        weather_risk = weather.get("is_safe") is False or max_weather_wind > constraints.get("max_wind_kmh", 65.0)
+        weather_limit = float(constraints.get("max_wind_kmh", 65.0))
+        weather_risk = weather.get("is_safe") is False or max_weather_wind > weather_limit
         if weather_risk:
+            metric_label, metric_value = _critical_weather_metric(weather)
+            weather_message = (
+                f"Blocked by weather conditions: {metric_label} reached {metric_value:.1f} km/h "
+                f"while the route safety limit is {weather_limit:.1f} km/h."
+            )
             conflicts.append(
                 {
                     "type": "weather",
-                    "severity": "warning",
-                    "message": "Weather bypass authorized (Heavy VIP Aircraft).",
+                    "severity": "blocker",
+                    "message": weather_message,
                     "zone_id": None,
                     "zone_name": None,
                     "route_progress": 0.06 if coordinates else None,

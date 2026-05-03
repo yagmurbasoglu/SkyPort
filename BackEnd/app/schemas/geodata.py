@@ -51,3 +51,22 @@ class AirspaceOverlayResponse(BaseModel):
     type: Literal["FeatureCollection"]
     features: list[dict]
     summary: dict[str, int]
+
+
+class WindOverlayResponse(BaseModel):
+    source: str
+    condition: str
+    wind_kmh: float
+    wind_direction_deg: float | None = None
+    wind_gusts_kmh: float | None = None
+    wind_80m_kmh: float | None = None
+    wind_80m_direction_deg: float | None = None
+    wind_120m_kmh: float | None = None
+    wind_120m_direction_deg: float | None = None
+    temperature_2m_c: float | None = None
+    precipitation_mm: float | None = None
+    visibility_m: float | None = None
+    weather_code: int | None = None
+    is_fallback: bool
+    is_safe: bool
+    warning: str | None = None

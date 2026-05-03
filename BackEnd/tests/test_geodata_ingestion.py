@@ -44,6 +44,7 @@ def _in_memory_job_repo(monkeypatch):
     monkeypatch.setattr(geodata_service.geodata_repo, "create_job", create_job)
     monkeypatch.setattr(geodata_service.geodata_repo, "update_job", update_job)
     monkeypatch.setattr(geodata_service.geodata_repo, "get_job", get_job)
+    monkeypatch.setattr(geodata_service, "count_nfz_intersections_in_bbox", lambda _bbox: 0)
 
 
 def test_ingest_returns_job_payload(monkeypatch) -> None:
@@ -102,6 +103,16 @@ def test_bbox_outside_istanbul_returns_400() -> None:
     assert response.status_code == 400
     body = response.json()
     assert body["code"] == "OUTSIDE_ISTANBUL_BOUNDARY"
+
+
+def test_bbox_intersecting_nfz_returns_400(monkeypatch) -> None:
+    monkeypatch.setattr(geodata_service, "count_nfz_intersections_in_bbox", lambda _bbox: 2)
+
+    response = client.post("/api/geodata/ingest", json=_valid_payload())
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["code"] == "NFZ_INTERSECTION_NOT_ALLOWED"
 
 
 def test_missing_layers_returns_partial_success(monkeypatch) -> None:

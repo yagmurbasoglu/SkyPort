@@ -4,6 +4,7 @@ from decimal import Decimal
 from geoalchemy2 import Geometry
 from sqlalchemy import BigInteger, Boolean, DateTime, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import JSON
 
 from app.db.base import Base
 
@@ -20,6 +21,8 @@ class Vertiport(Base):
     suitability_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     price_per_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    features: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    noise_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

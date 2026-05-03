@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.api.deps import RoleChecker
@@ -9,6 +10,8 @@ from app.schemas.analysis import (
     AnalysisCompareResponse,
     AnalysisCreateRequest,
     AnalysisCreateResponse,
+    AnalysisSaveRequest,
+    AnalysisSaveResponse,
     AnalysisHeatmapResponse,
     AnalysisRecalculateRequest,
     AnalysisResultResponse,
@@ -104,6 +107,22 @@ def get_analysis_cell_detail(
     return AnalysisCellDetailResponse(**result)
 
 
+@router.post("/{analysis_id}/save", response_model=AnalysisSaveResponse)
+def save_analysis_to_profile(
+    analysis_id: int,
+    req: AnalysisSaveRequest,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisSaveResponse:
+    result = AnalysisService().save_to_profile(
+        user_id=current_user.id,
+        analysis_id=analysis_id,
+        name=req.name,
+        map_view=req.map_view,
+        selected_bounds=req.selected_bounds,
+    )
+    return AnalysisSaveResponse(**result)
+
+
 @router.get("/history", response_model=AnalysisHistoryResponse)
 def get_analysis_history(
     current_user: User = Depends(allow_expert),
@@ -124,8 +143,22 @@ def export_analysis(
     """
     Export analysis results as GeoJSON or PDF report data.
     """
-    result = AnalysisService().export_results(analysis_id, format)
+    result = AnalysisService().export_results(user_id=current_user.id, analysis_id=analysis_id, format=format)
     return AnalysisExportResponse(**result)
+
+
+@router.get("/reports/{report_id}/download")
+def download_exported_report(
+    report_id: int,
+    current_user: User = Depends(allow_expert),
+):
+    payload = AnalysisService().get_report_download(user_id=current_user.id, report_id=report_id)
+    media_type = "application/geo+json" if payload["format"] == "geojson" else "application/pdf"
+    return FileResponse(
+        path=payload["file_path"],
+        media_type=media_type,
+        filename=payload["file_path"].name,
+    )
 
 
 @router.post("/compare", response_model=AnalysisCompareResponse)

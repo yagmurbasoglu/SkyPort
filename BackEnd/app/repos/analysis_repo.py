@@ -19,6 +19,9 @@ def _analysis_to_dict(analysis: Analysis) -> dict[str, Any]:
         "region_name": analysis.region_name,
         "status": analysis.status,
         "criteria_weights": analysis.criteria_weights or {},
+        "saved_name": analysis.saved_name,
+        "saved_payload": analysis.saved_payload or {},
+        "saved_at": analysis.saved_at,
         "started_at": analysis.started_at,
         "completed_at": analysis.completed_at,
         "created_at": analysis.created_at,
@@ -197,4 +200,37 @@ def summarize_results(analysis_id: int) -> dict[str, Any]:
 def list_user_analyses(user_id: int) -> list[dict[str, Any]]:
     with SessionLocal() as db:
         stmt = select(Analysis).where(Analysis.user_id == user_id).order_by(Analysis.created_at.desc())
+        return [_analysis_to_dict(row) for row in db.execute(stmt).scalars().all()]
+
+
+def save_analysis(
+    analysis_id: int,
+    *,
+    saved_name: str,
+    saved_payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        analysis = db.get(Analysis, analysis_id)
+        if analysis is None:
+            return None
+
+        analysis.saved_name = saved_name
+        analysis.saved_payload = saved_payload
+        analysis.saved_at = now
+        db.commit()
+        db.refresh(analysis)
+        return _analysis_to_dict(analysis)
+
+
+def list_saved_analyses(user_id: int) -> list[dict[str, Any]]:
+    with SessionLocal() as db:
+        stmt = (
+            select(Analysis)
+            .where(
+                Analysis.user_id == user_id,
+                Analysis.saved_at.is_not(None),
+            )
+            .order_by(Analysis.saved_at.desc(), Analysis.created_at.desc())
+        )
         return [_analysis_to_dict(row) for row in db.execute(stmt).scalars().all()]

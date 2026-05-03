@@ -23,6 +23,19 @@ class AnalysisRecalculateRequest(BaseModel):
     criteria_weights: dict[str, float]
 
 
+class AnalysisSaveRequest(BaseModel):
+    name: str = Field(..., min_length=3, max_length=160)
+    map_view: dict | None = None
+    selected_bounds: dict | None = None
+
+
+class AnalysisSaveResponse(BaseModel):
+    analysis_id: int
+    saved_name: str
+    saved_at: datetime
+    message: str
+
+
 class AnalysisStatusResponse(BaseModel):
     analysis_id: int
     status: AnalysisStatus
@@ -85,6 +98,9 @@ class AnalysisHistoryItem(BaseModel):
     region_name: str | None
     status: AnalysisStatus
     created_at: datetime
+    saved_name: str | None = None
+    saved_at: datetime | None = None
+    saved_payload: dict | None = None
     suitability_score: float | None = None
 
 
@@ -93,8 +109,10 @@ class AnalysisHistoryResponse(BaseModel):
 
 
 class AnalysisExportResponse(BaseModel):
+    report_id: int | None = None
     analysis_id: int
     format: str
+    file_name: str | None = None
     download_url: str | None = None
     geojson: dict | None = None
     report: dict | None = None

@@ -75,7 +75,7 @@ def _condition_from_weather_code(code: int | None) -> str:
     return "unknown"
 
 class WeatherService:
-    def get_route_weather(self, coordinates: list[list[float]], max_wind_kmh: float) -> dict[str, Any]:
+    def _fetch_weather_at(self, latitude: float, longitude: float, max_wind_kmh: float) -> dict[str, Any]:
         settings = get_settings()
         if not settings.weather_enabled:
             return _fallback_weather(
@@ -83,7 +83,6 @@ class WeatherService:
                 "Live weather integration is disabled; standard conditions are applied.",
             )
 
-        latitude, longitude = _route_midpoint(coordinates)
         client = OpenMeteoClient(settings.weather_api_url)
         body = client.fetch_route_weather(
             latitude=latitude,
@@ -110,6 +109,12 @@ class WeatherService:
 
         max_observed_wind = float(max(wind_candidates))
         is_safe = max_observed_wind <= max_wind_kmh
+        warning = None
+        if not is_safe:
+            warning = (
+                f"Observed wind reached {max_observed_wind:.1f} km/h, "
+                f"which exceeds the configured route safety limit of {max_wind_kmh:.1f} km/h."
+            )
         return {
             "source": "open_meteo",
             "condition": _condition_from_weather_code(int(weather_code) if weather_code is not None else None),
@@ -126,5 +131,12 @@ class WeatherService:
             "weather_code": weather_code,
             "is_fallback": False,
             "is_safe": is_safe,
-            "warning": None if is_safe else "Observed wind exceeds configured route safety limit.",
+            "warning": warning,
         }
+
+    def get_point_weather(self, latitude: float, longitude: float, max_wind_kmh: float = 120.0) -> dict[str, Any]:
+        return self._fetch_weather_at(float(latitude), float(longitude), max_wind_kmh)
+
+    def get_route_weather(self, coordinates: list[list[float]], max_wind_kmh: float) -> dict[str, Any]:
+        latitude, longitude = _route_midpoint(coordinates)
+        return self._fetch_weather_at(latitude, longitude, max_wind_kmh)

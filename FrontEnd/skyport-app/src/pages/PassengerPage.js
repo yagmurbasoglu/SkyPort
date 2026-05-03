@@ -1,7 +1,14 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Paper, Typography, IconButton, Tooltip,
-  Tabs, Tab, Fade, Chip,
+  Box,
+  Chip,
+  Fade,
+  IconButton,
+  Paper,
+  Tab,
+  Tabs,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import MapIcon from '@mui/icons-material/Map';
 import FlightIcon from '@mui/icons-material/Flight';
@@ -17,7 +24,8 @@ import PassengerMapView from '../components/passenger/PassengerMapView';
 import FilterSidebar from '../components/passenger/FilterSidebar';
 import FavoritesSidebar from '../components/passenger/FavoritesSidebar';
 import RoutePlanner from '../components/passenger/RoutePlanner';
-import { MOCK_VERTIPORTS, FEATURE_ICONS, FEATURE_LABELS } from '../mock/vertiports';
+import { FEATURE_ICONS, FEATURE_LABELS, MOCK_VERTIPORTS } from '../mock/vertiports';
+import { useAuth } from '../context/AuthContext';
 
 const DEFAULT_FILTERS = {
   maxDistance: 40,
@@ -49,16 +57,20 @@ const normalizeDbVertiport = (vp) => {
     const seed = (vp.id * 13) % 270;
     price = 180 + seed;
   }
+
   return {
     id: vp.id,
     name: vp.name,
     lat: Number(vp.lat),
     lng: Number(vp.lng),
-    features: [],
+    features: Array.isArray(vp.features) ? vp.features : [],
     suitabilityScore: Number(vp.suitability_score ?? 75),
     pricePerKm: price,
     description: vp.description || 'Active vertiport from the SkyPort operational network.',
-    distanceFromCenter: Number(distanceKm(CENTER, { lat: Number(vp.lat), lng: Number(vp.lng) }).toFixed(1)),
+    noiseLevel: vp.noise_level || null,
+    distanceFromCenter: Number(
+      (vp.distance_from_center_km ?? distanceKm(CENTER, { lat: Number(vp.lat), lng: Number(vp.lng) })).toFixed(1)
+    ),
   };
 };
 
@@ -69,41 +81,42 @@ const scoreColor = (score) => {
 };
 
 const PassengerPage = () => {
-  const [activeMode, setActiveMode] = useState('map'); // 'map' | 'route' | 'favorites'
+  const { user } = useAuth();
+  const [activeMode, setActiveMode] = useState('map');
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedVertiport, setSelectedVertiport] = useState(null);
   const [route, setRoute] = useState(null);
   const [flyToTarget, setFlyToTarget] = useState(null);
   const [vertiports, setVertiports] = useState(MOCK_VERTIPORTS);
-  const [isUsingMock, setIsUsingMock] = useState(false);
+  const [usingMockData, setUsingMockData] = useState(false);
 
-  // ── Favorites: synced with backend, localStorage as offline fallback ───────
   const [favorites, setFavorites] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('skyport_favorites')) || []; }
-    catch { return []; }
+    try {
+      return JSON.parse(localStorage.getItem('skyport_favorites')) || [];
+    } catch {
+      return [];
+    }
   });
 
-  // Load favorites from backend on mount
   useEffect(() => {
     axios.get('/api/favorites')
-      .then((res) => {
-        if (Array.isArray(res.data)) {
-          setFavorites(res.data);
-          localStorage.setItem('skyport_favorites', JSON.stringify(res.data));
+      .then((response) => {
+        if (Array.isArray(response.data)) {
+          setFavorites(response.data);
+          localStorage.setItem('skyport_favorites', JSON.stringify(response.data));
         }
       })
       .catch(() => {
-        // Silently fall back to localStorage favorites if backend unavailable
+        // Fall back to localStorage when backend is unavailable.
       });
-  }, []);
+  }, [user?.id]);
 
   const toggleFavorite = async (id) => {
     const isFav = favorites.includes(id);
-    // Optimistic update first for snappy UX
     const next = isFav ? favorites.filter((f) => f !== id) : [...favorites, id];
     setFavorites(next);
     localStorage.setItem('skyport_favorites', JSON.stringify(next));
-    // Sync with backend — revert on error
+
     try {
       if (isFav) {
         await axios.delete(`/api/favorites/${id}`);
@@ -116,35 +129,51 @@ const PassengerPage = () => {
     }
   };
 
-  // ── Vertiports from backend ────────────────────────────────────────────────
   useEffect(() => {
     let alive = true;
     const params = {};
+
     if (filters.minScore) params.min_score = filters.minScore;
     if (filters.maxPrice) params.max_price = filters.maxPrice;
+    if (filters.maxDistance) params.max_distance_km = filters.maxDistance;
+    params.center_lat = CENTER.lat;
+    params.center_lng = CENTER.lng;
+    if (filters.metro) params.metro = true;
+    if (filters.low_noise) params.low_noise = true;
+    if (filters.parking) params.parking = true;
+    if (filters.ev_charging) params.ev_charging = true;
 
     axios.get('/api/vertiports', { params })
       .then((response) => {
         if (!alive) return;
-        const active = Array.isArray(response.data) ? response.data.map(normalizeDbVertiport) : [];
+
+        const active = Array.isArray(response.data)
+          ? response.data.map(normalizeDbVertiport)
+          : [];
+
         if (active.length > 0) {
           setVertiports(active);
-          setIsUsingMock(false);
+          setUsingMockData(false);
         } else {
-          setIsUsingMock(true);
+          setVertiports(MOCK_VERTIPORTS);
+          setUsingMockData(true);
         }
       })
       .catch(() => {
         if (alive) {
           setVertiports(MOCK_VERTIPORTS);
-          setIsUsingMock(true);
+          setUsingMockData(true);
         }
       });
-    return () => { alive = false; };
-  }, [filters.minScore, filters.maxPrice]);
 
-  // Apply client-side filters
+    return () => {
+      alive = false;
+    };
+  }, [filters]);
+
   const filteredVertiports = useMemo(() => {
+    if (!usingMockData) return vertiports;
+
     return vertiports.filter((vp) => {
       if (vp.distanceFromCenter > filters.maxDistance) return false;
       if (vp.pricePerKm > filters.maxPrice) return false;
@@ -155,21 +184,18 @@ const PassengerPage = () => {
       if (filters.ev_charging && !vp.features.includes('ev_charging')) return false;
       return true;
     });
-  }, [filters, vertiports]);
+  }, [filters, vertiports, usingMockData]);
 
   const handleModeChange = (_, newMode) => {
     setActiveMode(newMode);
-    if (newMode !== 'route') { setRoute(null); }
+    if (newMode !== 'route') setRoute(null);
   };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: '#020617' }}>
       <Navbar />
 
-      {/* Map + floating panels */}
       <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-
-        {/* Map fills entire background */}
         <PassengerMapView
           filteredVertiports={filteredVertiports}
           selectedVertiport={selectedVertiport}
@@ -178,14 +204,16 @@ const PassengerPage = () => {
           flyToTarget={flyToTarget}
         />
 
-        {/* ── Demo Mode indicator ────────────────────────────────────────── */}
-        {isUsingMock && (
+        {usingMockData && (
           <Chip
             icon={<WifiOffIcon sx={{ fontSize: 14 }} />}
-            label="Demo Mode — Live data unavailable"
+            label="Demo Mode - Live data unavailable"
             size="small"
             sx={{
-              position: 'absolute', bottom: 16, right: 16, zIndex: 30,
+              position: 'absolute',
+              bottom: 16,
+              right: 16,
+              zIndex: 30,
               background: 'rgba(245, 158, 11, 0.15)',
               border: '1px solid rgba(245, 158, 11, 0.4)',
               color: '#f59e0b',
@@ -195,10 +223,12 @@ const PassengerPage = () => {
           />
         )}
 
-        {/* ── Mode Tab Bar — floating top center ── */}
         <Paper
           sx={{
-            position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
+            position: 'absolute',
+            top: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
             zIndex: 20,
             background: 'rgba(2, 6, 23, 0.92)',
             backdropFilter: 'blur(14px)',
@@ -214,9 +244,15 @@ const PassengerPage = () => {
               minHeight: 42,
               '& .MuiTabs-indicator': { background: 'linear-gradient(90deg, #e17b8f, #e17b8f)', height: 2 },
               '& .MuiTab-root': {
-                minHeight: 42, py: 0, px: 2.5,
-                color: '#475569', fontFamily: 'Inter', fontWeight: 600,
-                fontSize: '0.78rem', textTransform: 'none', letterSpacing: 0,
+                minHeight: 42,
+                py: 0,
+                px: 2.5,
+                color: '#475569',
+                fontFamily: 'Inter',
+                fontWeight: 600,
+                fontSize: '0.78rem',
+                textTransform: 'none',
+                letterSpacing: 0,
                 gap: 0.8,
                 '&.Mui-selected': { color: '#e2e8f0' },
               },
@@ -227,24 +263,31 @@ const PassengerPage = () => {
             <Tab
               icon={<StarIcon sx={{ fontSize: 16, color: favorites.length > 0 ? '#f59e0b' : 'inherit' }} />}
               iconPosition="start"
-              label={
+              label={(
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
                   Favorites
                   {favorites.length > 0 && (
-                    <Chip label={favorites.length} size="small" sx={{
-                      height: 16, fontSize: '0.6rem', minWidth: 20,
-                      background: 'rgba(245,158,11,0.2)', color: '#f59e0b', border: 'none',
-                    }} />
+                    <Chip
+                      label={favorites.length}
+                      size="small"
+                      sx={{
+                        height: 16,
+                        fontSize: '0.6rem',
+                        minWidth: 20,
+                        background: 'rgba(245,158,11,0.2)',
+                        color: '#f59e0b',
+                        border: 'none',
+                      }}
+                    />
                   )}
                 </Box>
-              }
+              )}
               value="favorites"
             />
             <Tab icon={<HistoryIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Past Flights" value="history" />
           </Tabs>
         </Paper>
 
-        {/* ── Filter Sidebar — shown in Map mode ── */}
         <Fade in={activeMode === 'map'}>
           <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: activeMode === 'map' ? 'auto' : 'none' }}>
             <FilterSidebar
@@ -255,7 +298,6 @@ const PassengerPage = () => {
           </Box>
         </Fade>
 
-        {/* ── Route Planner — shown in Route mode ── */}
         <Fade in={activeMode === 'route'}>
           <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
             <Box sx={{ pointerEvents: 'auto', display: 'inline-block' }}>
@@ -268,7 +310,6 @@ const PassengerPage = () => {
           </Box>
         </Fade>
 
-        {/* ── Favorites Sidebar — shown in Favorites mode ── */}
         <Fade in={activeMode === 'favorites'}>
           <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
             <Box sx={{ pointerEvents: 'auto', display: 'inline-block' }}>
@@ -282,7 +323,6 @@ const PassengerPage = () => {
           </Box>
         </Fade>
 
-        {/* ── Past Flights Sidebar — shown in History mode ── */}
         <Fade in={activeMode === 'history'}>
           <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
             <Box sx={{ pointerEvents: 'auto', display: 'inline-block' }}>
@@ -291,12 +331,17 @@ const PassengerPage = () => {
           </Box>
         </Fade>
 
-        {/* ── Vertiport Detail Card — floating bottom center ── */}
         <Fade in={!!selectedVertiport}>
-          <Box sx={{
-            position: 'absolute', bottom: 56, left: '50%', transform: 'translateX(-50%)',
-            zIndex: 20, pointerEvents: selectedVertiport ? 'auto' : 'none',
-          }}>
+          <Box
+            sx={{
+              position: 'absolute',
+              bottom: 56,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 20,
+              pointerEvents: selectedVertiport ? 'auto' : 'none',
+            }}
+          >
             {selectedVertiport && (
               <VertiportDetailCard
                 vp={selectedVertiport}
@@ -312,26 +357,34 @@ const PassengerPage = () => {
   );
 };
 
-// ─── Vertiport Detail Card ─────────────────────────────────────────────────────
 const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
-  <Paper sx={{
-    background: 'rgba(2, 6, 23, 0.95)',
-    backdropFilter: 'blur(16px)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: '16px',
-    boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
-    p: 2,
-    minWidth: 340,
-    maxWidth: 420,
-  }}>
+  <Paper
+    sx={{
+      background: 'rgba(2, 6, 23, 0.95)',
+      backdropFilter: 'blur(16px)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: '16px',
+      boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
+      p: 2,
+      minWidth: 340,
+      maxWidth: 420,
+    }}
+  >
     <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
-      {/* Score */}
-      <Box sx={{
-        width: 48, height: 48, borderRadius: '12px', flexShrink: 0,
-        background: `${scoreColor(vp.suitabilityScore)}18`,
-        border: `1.5px solid ${scoreColor(vp.suitabilityScore)}44`,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      }}>
+      <Box
+        sx={{
+          width: 48,
+          height: 48,
+          borderRadius: '12px',
+          flexShrink: 0,
+          background: `${scoreColor(vp.suitabilityScore)}18`,
+          border: `1.5px solid ${scoreColor(vp.suitabilityScore)}44`,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
         <Typography sx={{ fontSize: '1rem', fontWeight: 800, color: scoreColor(vp.suitabilityScore), lineHeight: 1 }}>
           {vp.suitabilityScore}
         </Typography>
@@ -340,17 +393,15 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
         </Typography>
       </Box>
 
-      {/* Name & distance */}
       <Box sx={{ flex: 1 }}>
         <Typography sx={{ fontWeight: 700, color: '#e2e8f0', fontSize: '0.9rem', lineHeight: 1.3, mb: 0.3 }}>
           {vp.name}
         </Typography>
         <Typography sx={{ fontSize: '0.72rem', color: '#64748b' }}>
-          {vp.distanceFromCenter} km from center · ₺{vp.pricePerKm}/km
+          {vp.distanceFromCenter} km from center - TL {vp.pricePerKm}/km
         </Typography>
       </Box>
 
-      {/* Favorite + Close */}
       <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
         <Tooltip title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}>
           <IconButton onClick={onToggleFavorite} size="small" sx={{ color: isFavorite ? '#f59e0b' : '#475569', '&:hover': { color: '#f59e0b' } }}>
@@ -363,12 +414,10 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
       </Box>
     </Box>
 
-    {/* Description */}
     <Typography sx={{ fontSize: '0.75rem', color: '#64748b', mt: 1.5, lineHeight: 1.6 }}>
       {vp.description}
     </Typography>
 
-    {/* Features */}
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 1.5 }}>
       {vp.features.map((f) => (
         <Chip
@@ -376,7 +425,9 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
           label={`${FEATURE_ICONS[f]} ${FEATURE_LABELS[f]}`}
           size="small"
           sx={{
-            height: 22, fontSize: '0.68rem', fontFamily: 'Inter',
+            height: 22,
+            fontSize: '0.68rem',
+            fontFamily: 'Inter',
             background: 'rgba(225,123,143,0.1)',
             border: '1px solid rgba(225,123,143,0.2)',
             color: '#60a5fa',
@@ -387,7 +438,6 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
   </Paper>
 );
 
-// ─── Past Flights Sidebar ─────────────────────────────────────────────────────
 const PastFlightsSidebar = () => {
   const flightHistory = useMemo(
     () => JSON.parse(localStorage.getItem('skyport_flight_history') || '[]'),
@@ -397,10 +447,16 @@ const PastFlightsSidebar = () => {
   return (
     <Paper
       sx={{
-        position: 'absolute', top: '50%', left: 24, transform: 'translateY(-50%)',
-        width: 320, background: 'rgba(2, 6, 23, 0.92)',
-        backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.07)',
-        borderRadius: '14px', maxHeight: 'calc(100vh - 180px)',
+        position: 'absolute',
+        top: '50%',
+        left: 24,
+        transform: 'translateY(-50%)',
+        width: 320,
+        background: 'rgba(2, 6, 23, 0.92)',
+        backdropFilter: 'blur(14px)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: '14px',
+        maxHeight: 'calc(100vh - 180px)',
         overflowY: 'auto',
       }}
     >
@@ -413,15 +469,19 @@ const PastFlightsSidebar = () => {
       <Box sx={{ p: 2 }}>
         {flightHistory.length === 0 ? (
           <Typography sx={{ fontSize: '0.78rem', color: '#475569', textAlign: 'center', mt: 3 }}>No flights yet.</Typography>
-        ) : flightHistory.map((f, i) => (
-          <Box key={i} sx={{ mb: 1.2, p: 1.5, borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        ) : flightHistory.map((flight, index) => (
+          <Box key={index} sx={{ mb: 1.2, p: 1.5, borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
-              <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#e17b8f' }}>{f.flightNo}</Typography>
-              <Typography sx={{ fontSize: '0.65rem', color: '#475569' }}>Gate {f.gate}</Typography>
+              <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#e17b8f' }}>{flight.flightNo}</Typography>
+              <Typography sx={{ fontSize: '0.65rem', color: '#475569' }}>Gate {flight.gate}</Typography>
             </Box>
-            <Typography sx={{ fontSize: '0.72rem', color: '#e2e8f0', fontWeight: 600 }} noWrap>{f.from} → {f.to}</Typography>
-            <Typography sx={{ fontSize: '0.65rem', color: '#64748b', mt: 0.3 }}>{f.distance_km} km · {f.duration_min} min · ₺{f.price_tl}</Typography>
-            <Typography sx={{ fontSize: '0.6rem', color: '#334155', mt: 0.2 }}>{f.date}</Typography>
+            <Typography sx={{ fontSize: '0.72rem', color: '#e2e8f0', fontWeight: 600 }} noWrap>
+              {flight.from} to {flight.to}
+            </Typography>
+            <Typography sx={{ fontSize: '0.65rem', color: '#64748b', mt: 0.3 }}>
+              {flight.distance_km} km - {flight.duration_min} min - TL {flight.price_tl}
+            </Typography>
+            <Typography sx={{ fontSize: '0.6rem', color: '#334155', mt: 0.2 }}>{flight.date}</Typography>
           </Box>
         ))}
       </Box>

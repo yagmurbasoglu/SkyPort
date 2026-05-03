@@ -17,15 +17,47 @@ def _distance_km(a: Coordinate, b: Coordinate) -> float:
     return radius_km * 2 * atan2(sqrt(h), sqrt(1 - h))
 
 
+def _projected_xy_km(point: Coordinate, *, origin_lat: float) -> tuple[float, float]:
+    km_per_lat = 111.32
+    km_per_lng = 111.32 * cos(radians(origin_lat))
+    return point[0] * km_per_lng, point[1] * km_per_lat
+
+
+def _distance_to_segment_km(point: Coordinate, start: Coordinate, end: Coordinate) -> float:
+    origin_lat = (start[1] + end[1]) / 2.0
+    px, py = _projected_xy_km(point, origin_lat=origin_lat)
+    sx, sy = _projected_xy_km(start, origin_lat=origin_lat)
+    ex, ey = _projected_xy_km(end, origin_lat=origin_lat)
+    dx = ex - sx
+    dy = ey - sy
+    if dx == 0 and dy == 0:
+        return sqrt((px - sx) ** 2 + (py - sy) ** 2)
+    t = ((px - sx) * dx + (py - sy) * dy) / ((dx * dx) + (dy * dy))
+    t = max(0.0, min(1.0, t))
+    closest_x = sx + (t * dx)
+    closest_y = sy + (t * dy)
+    return sqrt((px - closest_x) ** 2 + (py - closest_y) ** 2)
+
+
 def _build_grid(start: Coordinate, end: Coordinate, resolution: int = 14) -> list[list[Coordinate]]:
+    return _build_grid_with_padding(start, end, resolution=resolution, padding_scale=0.12)
+
+
+def _build_grid_with_padding(
+    start: Coordinate,
+    end: Coordinate,
+    *,
+    resolution: int,
+    padding_scale: float,
+) -> list[list[Coordinate]]:
     min_lng = min(start[0], end[0])
     max_lng = max(start[0], end[0])
     min_lat = min(start[1], end[1])
     max_lat = max(start[1], end[1])
     lng_span = max(max_lng - min_lng, 0.02)
     lat_span = max(max_lat - min_lat, 0.02)
-    padding_lng = max(lng_span * 0.25, 0.012)
-    padding_lat = max(lat_span * 0.25, 0.012)
+    padding_lng = max(lng_span * padding_scale, 0.008)
+    padding_lat = max(lat_span * padding_scale, 0.008)
     west = min_lng - padding_lng
     east = max_lng + padding_lng
     south = min_lat - padding_lat
@@ -60,9 +92,10 @@ def find_astar_route(
     end: Coordinate,
     *,
     is_blocked_edge: Callable[[Coordinate, Coordinate], bool],
-    resolution: int = 18,
+    resolution: int = 30,
+    padding_scale: float = 0.12,
 ) -> list[list[float]] | None:
-    grid = _build_grid(start, end, resolution=resolution)
+    grid = _build_grid_with_padding(start, end, resolution=resolution, padding_scale=padding_scale)
     start_node = _nearest_node(grid, start)
     end_node = _nearest_node(grid, end)
     frontier: list[tuple[float, tuple[int, int]]] = []
@@ -70,6 +103,7 @@ def find_astar_route(
     came_from: dict[tuple[int, int], tuple[int, int] | None] = {start_node: None}
     cost_so_far: dict[tuple[int, int], float] = {start_node: 0.0}
     edge_cache: dict[tuple[Coordinate, Coordinate], bool] = {}
+    direct_distance = max(_distance_km(start, end), 0.001)
     directions = [
         (-1, -1),
         (-1, 0),
@@ -103,10 +137,13 @@ def find_astar_route(
             if blocked:
                 continue
 
-            next_cost = cost_so_far[current] + _distance_km(current_point, neighbor_point)
+            step_cost = _distance_km(current_point, neighbor_point)
+            corridor_penalty = _distance_to_segment_km(neighbor_point, start, end) / direct_distance
+            next_cost = cost_so_far[current] + step_cost + (corridor_penalty * 0.08)
             if neighbor not in cost_so_far or next_cost < cost_so_far[neighbor]:
                 cost_so_far[neighbor] = next_cost
-                priority = next_cost + _distance_km(neighbor_point, grid[end_node[0]][end_node[1]])
+                heuristic = _distance_km(neighbor_point, grid[end_node[0]][end_node[1]])
+                priority = next_cost + heuristic + (corridor_penalty * 0.12)
                 heappush(frontier, (priority, neighbor))
                 came_from[neighbor] = current
 

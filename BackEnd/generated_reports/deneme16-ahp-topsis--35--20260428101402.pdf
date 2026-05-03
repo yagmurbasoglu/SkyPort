@@ -1,0 +1,66 @@
+%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Contents 5 0 R /Resources << /Font << /F1 4 0 R >> >> >> endobj
+4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
+5 0 obj << /Length 803 >> stream
+BT
+/F1 12 Tf
+50 790 Td
+16 TL
+(SkyPort Analysis Report) Tj
+T*
+(Analysis ID: 35) Tj
+T*
+(Region: Deneme16 AHP TOPSIS) Tj
+T*
+(Exported At: 2026-04-28T10:14:02.365331+00:00) Tj
+T*
+() Tj
+T*
+(Cell Count: 23) Tj
+T*
+(Average Score: 51.69608695652174) Tj
+T*
+(Max Score: 79.98) Tj
+T*
+(Min Score: 21.29) Tj
+T*
+() Tj
+T*
+(Top Candidates:) Tj
+T*
+(1. 881ec914a7fffff - suitability 79.98) Tj
+T*
+(2. 881ec91487fffff - suitability 75.15) Tj
+T*
+(3. 881ec914a9fffff - suitability 73.63) Tj
+T*
+(4. 881ec9064dfffff - suitability 72.84) Tj
+T*
+(5. 881ec91485fffff - suitability 72.65) Tj
+T*
+(6. 881ec90649fffff - suitability 70.17) Tj
+T*
+(7. 881ec914e7fffff - suitability 66.59) Tj
+T*
+(8. 881ec914a1fffff - suitability 65.77) Tj
+T*
+(9. 881ec915d1fffff - suitability 61.0) Tj
+T*
+(10. 881ec915d3fffff - suitability 53.84) Tj
+T*
+ET
+endstream endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer << /Size 6 /Root 1 0 R >>
+startxref
+1165
+%%EOF

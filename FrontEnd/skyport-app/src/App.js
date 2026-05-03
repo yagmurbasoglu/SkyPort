@@ -5,6 +5,7 @@ import theme from './theme';
 import { AuthProvider } from './context/AuthContext';
 import LandingPage from './LandingPage';
 import AuthPage from './pages/AuthPage';
+import BoardingPassPage from './pages/BoardingPassPage';
 import PassengerPage from './pages/PassengerPage';
 import ExpertPage from './pages/ExpertPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -19,6 +20,7 @@ function App() {
             {/* Public routes */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth" element={<AuthPage />} />
+            <Route path="/boarding-pass" element={<BoardingPassPage />} />
 
             {/* Protected: any logged-in user */}
             <Route

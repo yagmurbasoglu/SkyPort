@@ -1,9 +1,14 @@
 import React from 'react';
 import {
-  Box, Paper, Typography, Slider, Divider, Chip,
+  Box,
+  Chip,
+  Divider,
+  Paper,
+  Slider,
+  Typography,
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
-import { FEATURE_LABELS, FEATURE_ICONS } from '../../mock/vertiports';
+import { FEATURE_ICONS, FEATURE_LABELS } from '../../mock/vertiports';
 
 const FEATURE_KEYS = Object.keys(FEATURE_LABELS);
 
@@ -31,7 +36,6 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
         overflowY: 'auto',
       }}
     >
-      {/* Header */}
       <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <FilterListIcon sx={{ fontSize: 16, color: '#e17b8f' }} />
         <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
@@ -41,7 +45,9 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
           label={`${resultCount} vertiports`}
           size="small"
           sx={{
-            ml: 'auto', height: 18, fontSize: '0.6rem',
+            ml: 'auto',
+            height: 18,
+            fontSize: '0.6rem',
             background: 'rgba(225,123,143,0.15)',
             border: '1px solid rgba(225,123,143,0.25)',
             color: '#60a5fa',
@@ -50,7 +56,6 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
       </Box>
 
       <Box sx={{ p: 2 }}>
-        {/* Distance Slider */}
         <Typography sx={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, mb: 0.5 }}>
           Max Distance from Center
         </Typography>
@@ -67,7 +72,8 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
             color: '#e17b8f',
             '& .MuiSlider-track': { background: 'linear-gradient(90deg, #e17b8f, #60a5fa)' },
             '& .MuiSlider-thumb': {
-              width: 14, height: 14,
+              width: 14,
+              height: 14,
               border: '2px solid #e17b8f',
               background: '#fff',
               '&:hover': { boxShadow: '0 0 0 6px rgba(225,123,143,0.2)' },
@@ -78,7 +84,6 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
 
         <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
 
-        {/* Suitability Score Slider */}
         <Typography sx={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, mb: 0.5 }}>
           Min Suitability Score
         </Typography>
@@ -95,7 +100,8 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
             color: '#22c55e',
             '& .MuiSlider-track': { background: 'linear-gradient(90deg, #22c55e, #10b981)' },
             '& .MuiSlider-thumb': {
-              width: 14, height: 14,
+              width: 14,
+              height: 14,
               border: '2px solid #22c55e',
               background: '#fff',
             },
@@ -105,24 +111,24 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
 
         <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
 
-        {/* Price Slider */}
         <Typography sx={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, mb: 0.5 }}>
-          Max Price (₺/km)
+          Max Estimated Trip Price
         </Typography>
         <Typography sx={{ fontSize: '1rem', fontWeight: 800, color: '#e2e8f0', mb: 1 }}>
-          {filters.maxPrice} <span style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 400 }}>₺</span>
+          {filters.maxPrice} <span style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 400 }}>TL</span>
         </Typography>
         <Slider
-          value={filters.maxPrice || 1000}
+          value={filters.maxPrice || 5000}
           onChange={handlePriceChange}
-          min={1}
-          max={1000}
-          step={10}
+          min={120}
+          max={5000}
+          step={50}
           sx={{
             color: '#60a5fa',
             '& .MuiSlider-track': { background: 'linear-gradient(90deg, #60a5fa, #3b82f6)' },
             '& .MuiSlider-thumb': {
-              width: 14, height: 14,
+              width: 14,
+              height: 14,
               border: '2px solid #60a5fa',
               background: '#fff',
             },
@@ -132,7 +138,6 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
 
         <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
 
-        {/* Feature Filters */}
         <Typography sx={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, mb: 1.5 }}>
           Station Features
         </Typography>
@@ -142,8 +147,13 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
               key={key}
               onClick={() => handleFeatureToggle(key)}
               sx={{
-                display: 'flex', alignItems: 'center', gap: 1,
-                px: 1.5, py: 0.8, borderRadius: 1.5, cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1.5,
+                py: 0.8,
+                borderRadius: 1.5,
+                cursor: 'pointer',
                 transition: 'all 0.15s',
                 background: filters[key] ? 'rgba(225,123,143,0.12)' : 'rgba(255,255,255,0.03)',
                 border: filters[key] ? '1px solid rgba(225,123,143,0.3)' : '1px solid transparent',
@@ -156,10 +166,14 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
               </Typography>
               <Box
                 sx={{
-                  width: 14, height: 14, borderRadius: '4px',
+                  width: 14,
+                  height: 14,
+                  borderRadius: '4px',
                   border: filters[key] ? 'none' : '1.5px solid rgba(255,255,255,0.2)',
                   background: filters[key] ? '#e17b8f' : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   transition: 'all 0.15s',
                 }}
               >

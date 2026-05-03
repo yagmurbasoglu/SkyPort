@@ -17,6 +17,7 @@ import StarBorderIcon from '@mui/icons-material/StarBorder';
 import CloseIcon from '@mui/icons-material/Close';
 import WifiOffIcon from '@mui/icons-material/WifiOff';
 import HistoryIcon from '@mui/icons-material/History';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import axios from 'axios';
 
 import Navbar from '../components/Navbar';
@@ -30,7 +31,7 @@ import { useAuth } from '../context/AuthContext';
 const DEFAULT_FILTERS = {
   maxDistance: 40,
   minScore: 0,
-  maxPrice: 500,
+  maxPrice: 5000,
   metro: false,
   low_noise: false,
   parking: false,
@@ -51,13 +52,13 @@ const distanceKm = (a, b) => {
   return radius * 2 * Math.atan2(Math.sqrt(hav), Math.sqrt(1 - hav));
 };
 
-const normalizeDbVertiport = (vp) => {
-  let price = Number(vp.price_per_km || 0);
-  if (price < 50) {
-    const seed = (vp.id * 13) % 270;
-    price = 180 + seed;
-  }
+const estimateTripPrice = (distanceFromCenter, pricePerKm = 120) =>
+  Math.round(Number(distanceFromCenter || 0) * Number(pricePerKm || 120));
 
+const normalizeDbVertiport = (vp) => {
+  const distanceFromCenter = Number(
+    (vp.distance_from_center_km ?? distanceKm(CENTER, { lat: Number(vp.lat), lng: Number(vp.lng) })).toFixed(1)
+  );
   return {
     id: vp.id,
     name: vp.name,
@@ -65,12 +66,11 @@ const normalizeDbVertiport = (vp) => {
     lng: Number(vp.lng),
     features: Array.isArray(vp.features) ? vp.features : [],
     suitabilityScore: Number(vp.suitability_score ?? 75),
-    pricePerKm: price,
+    pricePerKm: 120,
+    estimatedTripPrice: estimateTripPrice(distanceFromCenter, 120),
     description: vp.description || 'Active vertiport from the SkyPort operational network.',
     noiseLevel: vp.noise_level || null,
-    distanceFromCenter: Number(
-      (vp.distance_from_center_km ?? distanceKm(CENTER, { lat: Number(vp.lat), lng: Number(vp.lng) })).toFixed(1)
-    ),
+    distanceFromCenter,
   };
 };
 
@@ -89,6 +89,13 @@ const PassengerPage = () => {
   const [flyToTarget, setFlyToTarget] = useState(null);
   const [vertiports, setVertiports] = useState(MOCK_VERTIPORTS);
   const [usingMockData, setUsingMockData] = useState(false);
+  const [flightHistory, setFlightHistory] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('skyport_flight_history') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   const [favorites, setFavorites] = useState(() => {
     try {
@@ -134,7 +141,6 @@ const PassengerPage = () => {
     const params = {};
 
     if (filters.minScore) params.min_score = filters.minScore;
-    if (filters.maxPrice) params.max_price = filters.maxPrice;
     if (filters.maxDistance) params.max_distance_km = filters.maxDistance;
     params.center_lat = CENTER.lat;
     params.center_lng = CENTER.lng;
@@ -171,24 +177,32 @@ const PassengerPage = () => {
     };
   }, [filters]);
 
-  const filteredVertiports = useMemo(() => {
-    if (!usingMockData) return vertiports;
-
-    return vertiports.filter((vp) => {
+  const filteredVertiports = useMemo(() => (
+    vertiports.filter((vp) => {
+      const estimatedTripPrice = vp.estimatedTripPrice ?? estimateTripPrice(vp.distanceFromCenter, vp.pricePerKm);
       if (vp.distanceFromCenter > filters.maxDistance) return false;
-      if (vp.pricePerKm > filters.maxPrice) return false;
+      if (estimatedTripPrice > filters.maxPrice) return false;
       if (vp.suitabilityScore < filters.minScore) return false;
       if (filters.metro && !vp.features.includes('metro')) return false;
       if (filters.low_noise && !vp.features.includes('low_noise')) return false;
       if (filters.parking && !vp.features.includes('parking')) return false;
       if (filters.ev_charging && !vp.features.includes('ev_charging')) return false;
       return true;
-    });
-  }, [filters, vertiports, usingMockData]);
+    })
+  ), [filters, vertiports]);
 
   const handleModeChange = (_, newMode) => {
     setActiveMode(newMode);
     if (newMode !== 'route') setRoute(null);
+  };
+
+  const handleFlightBooked = (entry) => {
+    setFlightHistory((prev) => [entry, ...prev].slice(0, 20));
+  };
+
+  const handleClearFlightHistory = () => {
+    localStorage.removeItem('skyport_flight_history');
+    setFlightHistory([]);
   };
 
   return (
@@ -289,12 +303,14 @@ const PassengerPage = () => {
         </Paper>
 
         <Fade in={activeMode === 'map'}>
-          <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: activeMode === 'map' ? 'auto' : 'none' }}>
-            <FilterSidebar
-              filters={filters}
-              onChange={setFilters}
-              resultCount={filteredVertiports.length}
-            />
+          <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
+            <Box sx={{ pointerEvents: activeMode === 'map' ? 'auto' : 'none', display: 'inline-block' }}>
+              <FilterSidebar
+                filters={filters}
+                onChange={setFilters}
+                resultCount={filteredVertiports.length}
+              />
+            </Box>
           </Box>
         </Fade>
 
@@ -305,6 +321,7 @@ const PassengerPage = () => {
                 vertiports={vertiports}
                 onRouteCalculated={setRoute}
                 onClearRoute={() => setRoute(null)}
+                onFlightBooked={handleFlightBooked}
               />
             </Box>
           </Box>
@@ -326,7 +343,7 @@ const PassengerPage = () => {
         <Fade in={activeMode === 'history'}>
           <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
             <Box sx={{ pointerEvents: 'auto', display: 'inline-block' }}>
-              <PastFlightsSidebar />
+              <PastFlightsSidebar flightHistory={flightHistory} onClear={handleClearFlightHistory} />
             </Box>
           </Box>
         </Fade>
@@ -398,7 +415,7 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
           {vp.name}
         </Typography>
         <Typography sx={{ fontSize: '0.72rem', color: '#64748b' }}>
-          {vp.distanceFromCenter} km from center - TL {vp.pricePerKm}/km
+          {vp.distanceFromCenter} km from center - TL {vp.pricePerKm}/km - Est. TL {vp.estimatedTripPrice}
         </Typography>
       </Box>
 
@@ -438,12 +455,7 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
   </Paper>
 );
 
-const PastFlightsSidebar = () => {
-  const flightHistory = useMemo(
-    () => JSON.parse(localStorage.getItem('skyport_flight_history') || '[]'),
-    []
-  );
-
+const PastFlightsSidebar = ({ flightHistory, onClear }) => {
   return (
     <Paper
       sx={{
@@ -465,6 +477,15 @@ const PastFlightsSidebar = () => {
         <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           Past Flights
         </Typography>
+        {flightHistory.length > 0 && (
+          <IconButton
+            size="small"
+            onClick={onClear}
+            sx={{ ml: 'auto', color: '#475569', '&:hover': { color: '#f87171' } }}
+          >
+            <DeleteSweepIcon sx={{ fontSize: 17 }} />
+          </IconButton>
+        )}
       </Box>
       <Box sx={{ p: 2 }}>
         {flightHistory.length === 0 ? (

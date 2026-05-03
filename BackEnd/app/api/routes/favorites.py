@@ -5,7 +5,7 @@ from app.models.user import User
 from app.repos.favorite_repo import add_favorite, remove_favorite, get_user_favorites
 
 router = APIRouter()
-allow_passenger = RoleChecker(["passenger", "expert"])
+allow_passenger = RoleChecker(["passenger"])
 
 @router.get("", response_model=list[int])
 def get_favorites(current_user: User = Depends(allow_passenger), db: Session = Depends(get_db)):

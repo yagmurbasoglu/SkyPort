@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import {
@@ -13,12 +13,33 @@ import PaymentIcon from '@mui/icons-material/Payment';
 import AirIcon from '@mui/icons-material/Air';
 import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
-import HistoryIcon from '@mui/icons-material/History';
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 import axios from 'axios';
 
 // ─── Flight number & gate helpers ─────────────────────────────────────────────
 const GATES = ['A1','A2','A3','B1','B2','B3','C1','C2','C4','D2','D5','D8'];
+
+const resolvePublicAppBaseUrl = () => {
+  const configured = process.env.REACT_APP_PUBLIC_APP_URL?.trim();
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+  return window.location.origin.replace(/\/+$/, '');
+};
+
+const buildBoardingPassUrl = ({ flightNo, gate, route, fromName, toName, issuedAt }) => {
+  const params = new URLSearchParams({
+    flight: flightNo,
+    gate,
+    from: fromName || 'Origin',
+    to: toName || 'Destination',
+    distance: String(route?.distance_km ?? ''),
+    duration: String(route?.duration_min ?? ''),
+    price: String(route?.price_tl ?? ''),
+    issued_at: issuedAt,
+  });
+  return `${resolvePublicAppBaseUrl()}/boarding-pass?${params.toString()}`;
+};
 
 const getNextFlightNo = () => {
   const stored = parseInt(localStorage.getItem('skyport_last_flight_no') || '100', 10);
@@ -127,7 +148,7 @@ const obstacleDataCopy = (route) => {
   };
 };
 
-const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
+const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlightBooked }) => {
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -136,6 +157,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
   const [showBoardingPass, setShowBoardingPass] = useState(false);
   const [flightNo, setFlightNo] = useState('');
   const [gate, setGate] = useState('');
+  const [boardingPassUrl, setBoardingPassUrl] = useState('');
   const ticketRef = useRef(null);
 
   const handleSwap = () => {
@@ -160,7 +182,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
           };
       const response = await axios.post('/api/route', {
         ...endpointPayload,
-        constraints: { avoid_nfz: true, avoid_obstacles: true, max_wind_kmh: 35 },
+        constraints: { avoid_nfz: true, avoid_obstacles: true, max_wind_kmh: 120 },
       });
       const result = { ...response.data, fromVertiport: from, toVertiport: to };
       setRoute(result);
@@ -177,8 +199,18 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
   const handleBookFlight = () => {
     const fn = getNextFlightNo();
     const g = randomGate();
+    const issuedAt = new Date().toLocaleString('tr-TR');
     setFlightNo(fn);
     setGate(g);
+    const livePassUrl = buildBoardingPassUrl({
+      flightNo: fn,
+      gate: g,
+      route,
+      fromName: route?.fromVertiport?.name || from?.name || 'Origin',
+      toName: route?.toVertiport?.name || to?.name || 'Destination',
+      issuedAt,
+    });
+    setBoardingPassUrl(livePassUrl);
     const entry = {
       flightNo: fn,
       gate: g,
@@ -187,9 +219,11 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
       distance_km: route?.distance_km,
       duration_min: route?.duration_min,
       price_tl: route?.price_tl,
-      date: new Date().toLocaleString('tr-TR'),
+      date: issuedAt,
+      boarding_pass_url: livePassUrl,
     };
     saveFlightHistory(entry);
+    onFlightBooked?.(entry);
     setShowBoardingPass(true);
   };
 
@@ -203,7 +237,15 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
 
   const fromName = route?.fromVertiport?.name || from?.name || '';
   const toName   = route?.toVertiport?.name   || to?.name   || '';
-  const qrData   = encodeURIComponent(`SKYPORT|${flightNo}|${fromName}|${toName}|${gate}`);
+  const usesLocalhostPass = boardingPassUrl.includes('localhost') || boardingPassUrl.includes('127.0.0.1');
+  const qrData   = encodeURIComponent(boardingPassUrl || buildBoardingPassUrl({
+    flightNo,
+    gate,
+    route,
+    fromName,
+    toName,
+    issuedAt: new Date().toLocaleString('tr-TR'),
+  }));
   const qrUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}&bgcolor=0f172a&color=e17b8f&margin=8`;
 
   const handleDownloadPDF = async () => {
@@ -526,25 +568,47 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute }) => {
 
               {/* QR Code */}
               <Box sx={{ background: 'rgba(255,255,255,0.02)', p: 2.5, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                <img src={qrUrl} alt="Boarding QR" style={{ width: 140, height: 140, borderRadius: 8, background: '#0f172a' }} />
+                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <img src={qrUrl} alt="Boarding QR" style={{ width: 140, height: 140, borderRadius: 8, background: '#0f172a' }} />
+                </Box>
                 <Typography sx={{ fontSize: '0.58rem', color: '#64748b', mt: 1, letterSpacing: '0.1em' }}>SCAN AT HELIPAD — {flightNo}</Typography>
+                <Typography sx={{ fontSize: '0.62rem', color: '#94a3b8', mt: 1.2, lineHeight: 1.5 }}>
+                  Scanning this QR opens the live SkyPort boarding pass page.
+                </Typography>
+                {usesLocalhostPass && (
+                  <Typography sx={{ fontSize: '0.62rem', color: '#fbbf24', mt: 1.1, lineHeight: 1.5 }}>
+                    This QR currently points to localhost. For phone access, open the app from your PC IP or set `REACT_APP_PUBLIC_APP_URL`.
+                  </Typography>
+                )}
               </Box>
             </Box>
 
             {/* Actions (Not part of the printed ticket) */}
-            <Box sx={{ p: 2, display: 'flex', gap: 1 }}>
+            <Box sx={{ width: 320, maxWidth: '100%', mx: 'auto', mt: 1.5, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
               <Button
-                fullWidth
                 variant="contained"
                 startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
                 onClick={handleDownloadPDF}
-                sx={{ background: 'linear-gradient(135deg,#e17b8f,#be123c)', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', borderRadius: '10px', py: 1.2 }}
+                sx={{ minHeight: 56, background: 'linear-gradient(135deg,#e17b8f,#be123c)', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', borderRadius: '10px', py: 1.2 }}
               >
                 Download PDF Ticket
               </Button>
-              <IconButton onClick={() => setShowBoardingPass(false)} sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: '#fff', borderRadius: '10px' }}>
-                <CloseIcon fontSize="small" />
-              </IconButton>
+              <Button
+                component="a"
+                href={boardingPassUrl}
+                target="_blank"
+                rel="noreferrer"
+                sx={{ minHeight: 56, bgcolor: 'rgba(255,255,255,0.06)', color: '#fff', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', borderRadius: '10px', px: 1.6 }}
+              >
+                Open Live Pass
+              </Button>
+              <Button
+                onClick={() => setShowBoardingPass(false)}
+                startIcon={<CloseIcon fontSize="small" />}
+                sx={{ minHeight: 56, bgcolor: 'rgba(255,255,255,0.05)', color: '#fff', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', borderRadius: '10px', px: 1.4 }}
+              >
+                Close
+              </Button>
             </Box>
           </Box>
         </Fade>

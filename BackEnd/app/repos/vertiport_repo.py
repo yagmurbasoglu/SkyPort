@@ -23,7 +23,7 @@ def list_active_vertiports(
             ST_Y(location::geometry) AS lat,
             ST_X(location::geometry) AS lng,
             suitability_score,
-            price_per_km,
+            120.0 AS price_per_km,
             description,
             features,
             noise_level,
@@ -37,13 +37,22 @@ def list_active_vertiports(
             is_active
         FROM public.vertiports
         WHERE is_active = true
+          AND NOT EXISTS (
+              SELECT 1
+              FROM public.nfz_zones n
+              WHERE n.is_active = true
+                AND n.source NOT ILIKE 'CONTROLLED_AIRSPACE%%'
+                AND (n.effective_from IS NULL OR n.effective_from <= now())
+                AND (n.effective_to IS NULL OR n.effective_to >= now())
+                AND ST_Intersects(n.geom, location::geometry)
+          )
     """
     params = {"center_lat": center_lat, "center_lng": center_lng}
     if min_score is not None:
         query_str += " AND suitability_score >= :min_score"
         params["min_score"] = min_score
     if max_price is not None:
-        query_str += " AND price_per_km <= :max_price"
+        query_str += " AND 120.0 <= :max_price"
         params["max_price"] = max_price
     if max_distance_km is not None and center_lat is not None and center_lng is not None:
         query_str += """

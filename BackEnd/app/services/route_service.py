@@ -103,8 +103,7 @@ class RouteService:
             avoid_obstacles=req.constraints.avoid_obstacles,
         )
         duration_min = max(3, round(distance_km / 2.0))
-        # Updated premium pricing: 550 TL base + 180 TL per km
-        price_tl = round((distance_km * 180.0) + 550.0, 2)
+        price_tl = round(distance_km * 120.0, 2)
         weather = self.weather_service.get_route_weather(coordinates, req.constraints.max_wind_kmh)
         safety = self._evaluate_route_geometry(
             coordinates=coordinates,

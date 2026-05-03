@@ -224,7 +224,7 @@ const PassengerMapView = ({
         type: 'fill',
         source: 'passenger-airspace-overlay',
         filter: ['==', ['get', 'zone_category'], 'nfz'],
-        paint: { 'fill-color': '#ef4444', 'fill-opacity': 0.24 },
+        paint: { 'fill-color': '#ef4444', 'fill-opacity': 0.22 },
       });
       map.current.addLayer({
         id: 'passenger-airspace-nfz-line',
@@ -627,11 +627,11 @@ const PassengerMapView = ({
               sx={{
                 width: 34,
                 height: 34,
-                bgcolor: showNfz ? '#dbeafe' : 'rgba(255,255,255,0.92)',
-                color: showNfz ? '#1d4ed8' : '#475569',
+                bgcolor: showNfz ? '#fee2e2' : 'rgba(255,255,255,0.92)',
+                color: showNfz ? '#b91c1c' : '#475569',
                 border: '1px solid rgba(148,163,184,0.18)',
                 boxShadow: '0 8px 18px rgba(15,23,42,0.12)',
-                '&:hover': { bgcolor: '#eff6ff' },
+                '&:hover': { bgcolor: '#fff1f2' },
               }}
             >
               <PolicyIcon fontSize="small" />

@@ -18,6 +18,8 @@ from app.schemas.analysis import (
     AnalysisStatusResponse,
     AnalysisHistoryResponse,
     AnalysisExportResponse,
+    AnalysisReportDeleteResponse,
+    AnalysisReportListResponse,
 )
 from app.services.analysis_service import AnalysisService
 
@@ -134,6 +136,14 @@ def get_analysis_history(
     return AnalysisHistoryResponse(**result)
 
 
+@router.get("/reports", response_model=AnalysisReportListResponse)
+def get_exported_reports(
+    current_user: User = Depends(allow_expert),
+) -> AnalysisReportListResponse:
+    result = AnalysisService().get_user_reports(current_user.id)
+    return AnalysisReportListResponse(**result)
+
+
 @router.get("/{analysis_id}/export", response_model=AnalysisExportResponse)
 def export_analysis(
     analysis_id: int,
@@ -159,6 +169,15 @@ def download_exported_report(
         media_type=media_type,
         filename=payload["file_path"].name,
     )
+
+
+@router.delete("/reports/{report_id}", response_model=AnalysisReportDeleteResponse)
+def delete_exported_report(
+    report_id: int,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisReportDeleteResponse:
+    result = AnalysisService().delete_report(user_id=current_user.id, report_id=report_id)
+    return AnalysisReportDeleteResponse(**result)
 
 
 @router.post("/compare", response_model=AnalysisCompareResponse)

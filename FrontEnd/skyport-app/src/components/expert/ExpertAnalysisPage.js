@@ -29,6 +29,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import CropFreeIcon from '@mui/icons-material/CropFree';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import DescriptionIcon from '@mui/icons-material/Description';
+import DownloadIcon from '@mui/icons-material/Download';
 import DirectionsTransitIcon from '@mui/icons-material/DirectionsTransit';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import FmdGoodIcon from '@mui/icons-material/FmdGood';
@@ -171,6 +173,13 @@ const scoreClassLabel = (scoreClass) => {
   if (scoreClass === 'low') return 'Low';
   if (scoreClass === 'unsuitable') return 'Unsuitable';
   return scoreClass || 'n/a';
+};
+
+const formatTimestamp = (value) => {
+  if (!value) return 'Unknown time';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString();
 };
 
 const bboxToFeature = (bbox) => ({
@@ -499,6 +508,7 @@ const ExpertAnalysisPage = () => {
   const [windVisible, setWindVisible] = useState(true);
   const [windSnapshot, setWindSnapshot] = useState(null);
   const [savedHistory, setSavedHistory] = useState([]);
+  const [exportedReports, setExportedReports] = useState([]);
   const [saveDraftName, setSaveDraftName] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const pulseRef = useRef(null);
@@ -1553,6 +1563,27 @@ const ExpertAnalysisPage = () => {
     }
   }, []);
 
+  const loadExportedReports = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/analysis/reports');
+      setExportedReports(Array.isArray(response.data?.items) ? response.data.items : []);
+    } catch (_err) {
+      setExportedReports([]);
+    }
+  }, []);
+
+  const downloadReportFile = useCallback(async (downloadUrl, fileName) => {
+    const fileResponse = await axios.get(downloadUrl, { responseType: 'blob' });
+    const objectUrl = window.URL.createObjectURL(fileResponse.data);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(objectUrl);
+  }, []);
+
   const saveAnalysisToProfile = useCallback(async () => {
     if (!analysisResult?.analysis_id) return;
     if (!saveDraftName.trim()) {
@@ -1597,23 +1628,45 @@ const ExpertAnalysisPage = () => {
       const downloadUrl = exportResponse.data?.download_url;
       if (!downloadUrl) throw new Error('Export download link was not returned by the server.');
       const fileName = exportResponse.data?.file_name || `analysis-${analysisResult.analysis_id}.${format}`;
-      const fileResponse = await axios.get(downloadUrl, { responseType: 'blob' });
-      const objectUrl = window.URL.createObjectURL(fileResponse.data);
-      const anchor = document.createElement('a');
-      anchor.href = objectUrl;
-      anchor.download = fileName;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.URL.revokeObjectURL(objectUrl);
+      await loadExportedReports();
+      await downloadReportFile(downloadUrl, fileName);
       setSuccessMessage('Report successfully exported.');
-      setActiveWorkspace('profile');
+      setActiveWorkspace('exports');
     } catch (err) {
       setError(err.response?.data?.message || err.response?.data?.detail || err.message);
     } finally {
       setBusy('');
     }
-  }, [analysisResult]);
+  }, [analysisResult, downloadReportFile, loadExportedReports]);
+
+  const downloadExistingReport = useCallback(async (reportItem) => {
+    if (!reportItem?.download_url || !reportItem?.file_name) return;
+    setBusy('report-download');
+    setError('');
+    try {
+      await downloadReportFile(reportItem.download_url, reportItem.file_name);
+    } catch (err) {
+      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+    } finally {
+      setBusy('');
+    }
+  }, [downloadReportFile]);
+
+  const deleteExistingReport = useCallback(async (reportItem) => {
+    if (!reportItem?.report_id) return;
+    setBusy('report-delete');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const response = await axios.delete(`/api/analysis/reports/${reportItem.report_id}`);
+      await loadExportedReports();
+      setSuccessMessage(response.data?.message || 'Report deleted successfully.');
+    } catch (err) {
+      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+    } finally {
+      setBusy('');
+    }
+  }, [loadExportedReports]);
 
   const loadSavedAnalysis = useCallback(async (historyItem) => {
     if (!historyItem?.analysis_id) return;
@@ -1660,6 +1713,10 @@ const ExpertAnalysisPage = () => {
   useEffect(() => {
     loadSavedHistory();
   }, [loadSavedHistory]);
+
+  useEffect(() => {
+    loadExportedReports();
+  }, [loadExportedReports]);
 
   const runExpertRouteSafety = async () => {
     setActiveWorkspace('route');
@@ -1913,6 +1970,7 @@ const ExpertAnalysisPage = () => {
           <Tab icon={<RouteIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Route Safety" value="route" />
           <Tab icon={<AnalyticsIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Results" value="results" />
           <Tab icon={<BusinessIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Profile" value="profile" />
+          <Tab icon={<DescriptionIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Exports" value="exports" />
         </Tabs>
       </Paper>
 
@@ -2350,62 +2408,44 @@ const ExpertAnalysisPage = () => {
         <Box sx={{ position: 'absolute', inset: 0, zIndex: 19, pointerEvents: 'none' }}>
           <Paper sx={{ ...workspacePanelSx, width: { xs: 'calc(100% - 32px)', md: 430 }, pointerEvents: activeWorkspace === 'profile' ? 'auto' : 'none' }}>
             <Stack spacing={2}>
-              <Typography sx={{ color: '#e2e8f0', fontWeight: 800 }}>Saved Analyses & Export</Typography>
+              <Typography sx={{ color: '#e2e8f0', fontWeight: 800 }}>Saved Analyses</Typography>
               {!!successMessage && <Alert severity="success" onClose={() => setSuccessMessage('')} sx={{ fontSize: '0.76rem' }}>{successMessage}</Alert>}
               {!analysisResult && (
                 <Typography sx={{ color: '#94a3b8', fontSize: '0.82rem' }}>
-                  Complete an analysis first, then save it to your profile or export it as a PDF report.
+                  Complete an analysis first, then save it to your profile.
                 </Typography>
               )}
               {analysisResult && (
-                <>
-                  <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
-                    <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>
-                      Save Analysis to Profile
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="Saved analysis name"
-                      value={saveDraftName}
-                      onChange={(event) => setSaveDraftName(event.target.value)}
-                      sx={{ ...fieldSx, mb: 1.1 }}
-                    />
-                    <Stack direction="row" spacing={1}>
-                      <Button
-                        variant="contained"
-                        onClick={saveAnalysisToProfile}
-                        disabled={busy === 'save'}
-                        sx={{ bgcolor: '#b65f70', color: '#fff', borderRadius: '8px', textTransform: 'none', '&:hover': { bgcolor: '#9a4c5a' } }}
-                      >
-                        {busy === 'save' ? <CircularProgress size={18} color="inherit" /> : 'Save Analysis'}
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        onClick={loadSavedHistory}
-                        disabled={busy === 'save'}
-                        sx={{ color: '#94a3b8', borderColor: 'rgba(148,163,184,0.28)', borderRadius: '8px', textTransform: 'none' }}
-                      >
-                        Refresh History
-                      </Button>
-                    </Stack>
-                  </Box>
-                  <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
-                    <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>
-                      Export PDF Report
-                    </Typography>
-                    <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem', lineHeight: 1.5, mb: 1 }}>
-                      Download a styled PDF summary containing the current analysis snapshot and its top-ranked candidate cells.
-                    </Typography>
+                <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
+                  <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>
+                    Save Analysis to Profile
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Saved analysis name"
+                    value={saveDraftName}
+                    onChange={(event) => setSaveDraftName(event.target.value)}
+                    sx={{ ...fieldSx, mb: 1.1 }}
+                  />
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      variant="contained"
+                      onClick={saveAnalysisToProfile}
+                      disabled={busy === 'save'}
+                      sx={{ bgcolor: '#b65f70', color: '#fff', borderRadius: '8px', textTransform: 'none', '&:hover': { bgcolor: '#9a4c5a' } }}
+                    >
+                      {busy === 'save' ? <CircularProgress size={18} color="inherit" /> : 'Save Analysis'}
+                    </Button>
                     <Button
                       variant="outlined"
-                      onClick={() => downloadAnalysisExport('pdf')}
-                      disabled={busy === 'export'}
-                      sx={{ color: '#f8fafc', borderColor: 'rgba(248,250,252,0.18)', borderRadius: '8px', textTransform: 'none' }}
+                      onClick={loadSavedHistory}
+                      disabled={busy === 'save'}
+                      sx={{ color: '#94a3b8', borderColor: 'rgba(148,163,184,0.28)', borderRadius: '8px', textTransform: 'none' }}
                     >
-                      {busy === 'export' ? <CircularProgress size={18} color="inherit" /> : 'Export PDF'}
+                      Refresh History
                     </Button>
-                  </Box>
-                </>
+                  </Stack>
+                </Box>
               )}
               <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
                 <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>
@@ -2446,6 +2486,110 @@ const ExpertAnalysisPage = () => {
                       >
                         Reload
                       </Button>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            </Stack>
+          </Paper>
+        </Box>
+      </Fade>
+
+      <Fade in={activeWorkspace === 'exports'}>
+        <Box sx={{ position: 'absolute', inset: 0, zIndex: 19, pointerEvents: 'none' }}>
+          <Paper sx={{ ...workspacePanelSx, width: { xs: 'calc(100% - 32px)', md: 430 }, pointerEvents: activeWorkspace === 'exports' ? 'auto' : 'none' }}>
+            <Stack spacing={2}>
+              <Typography sx={{ color: '#e2e8f0', fontWeight: 800 }}>Exported Reports</Typography>
+              {!!successMessage && <Alert severity="success" onClose={() => setSuccessMessage('')} sx={{ fontSize: '0.76rem' }}>{successMessage}</Alert>}
+              {analysisResult && (
+                <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
+                  <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>
+                    Export Current Analysis
+                  </Typography>
+                  <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem', lineHeight: 1.5, mb: 1 }}>
+                    Generate a styled PDF summary for the current analysis. Exported files stay listed here for later download.
+                  </Typography>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => downloadAnalysisExport('pdf')}
+                      disabled={busy === 'export'}
+                      sx={{ color: '#f8fafc', borderColor: 'rgba(248,250,252,0.18)', borderRadius: '8px', textTransform: 'none' }}
+                    >
+                      {busy === 'export' ? <CircularProgress size={18} color="inherit" /> : 'Export PDF'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={loadExportedReports}
+                      disabled={busy === 'export'}
+                      sx={{ color: '#94a3b8', borderColor: 'rgba(148,163,184,0.28)', borderRadius: '8px', textTransform: 'none' }}
+                    >
+                      Refresh Exports
+                    </Button>
+                  </Stack>
+                </Box>
+              )}
+              {!analysisResult && (
+                <Typography sx={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+                  Export history is listed here. Run an analysis when you want to generate a new PDF.
+                </Typography>
+              )}
+              <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', p: 1.2 }}>
+                <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 800, mb: 0.8 }}>
+                  Export History
+                </Typography>
+                {!exportedReports.length && (
+                  <Typography sx={{ color: '#64748b', fontSize: '0.72rem' }}>
+                    No exported reports yet.
+                  </Typography>
+                )}
+                <Stack spacing={0.8}>
+                  {exportedReports.slice(0, 12).map((item) => (
+                    <Box
+                      key={`exported-report-${item.report_id}`}
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: '36px 1fr auto',
+                        gap: 1,
+                        alignItems: 'center',
+                        bgcolor: 'rgba(255,255,255,0.03)',
+                        borderRadius: '8px',
+                        p: 1,
+                      }}
+                    >
+                      <Box sx={{ width: 32, height: 32, borderRadius: '8px', display: 'grid', placeItems: 'center', bgcolor: 'rgba(225,123,143,0.12)', color: '#fda4af' }}>
+                        <DescriptionIcon sx={{ fontSize: 18 }} />
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ color: '#e2e8f0', fontSize: '0.75rem', fontWeight: 800 }} noWrap>
+                          {item.file_name}
+                        </Typography>
+                        <Typography sx={{ color: '#94a3b8', fontSize: '0.68rem' }} noWrap>
+                          {(item.analysis_name || `Analysis ${item.analysis_id || 'n/a'}`)} · {String(item.format || '').toUpperCase()} · {formatTimestamp(item.created_at)}
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={0.5}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
+                          onClick={() => downloadExistingReport(item)}
+                          disabled={busy === 'report-download' || busy === 'report-delete'}
+                          sx={{ color: '#60a5fa', textTransform: 'none', minWidth: 0 }}
+                        >
+                          Get
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="text"
+                          startIcon={<DeleteOutlineIcon sx={{ fontSize: 15 }} />}
+                          onClick={() => deleteExistingReport(item)}
+                          disabled={busy === 'report-delete' || busy === 'report-download'}
+                          sx={{ color: '#fca5a5', textTransform: 'none', minWidth: 0 }}
+                        >
+                          Delete
+                        </Button>
+                      </Stack>
                     </Box>
                   ))}
                 </Stack>

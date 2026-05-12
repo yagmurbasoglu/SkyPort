@@ -12,4 +12,6 @@ class VertiportResponse(BaseModel):
     features: list[str] = []
     noise_level: str | None = None
     distance_from_center_km: float | None = None
+    average_rating: float | None = None
+    review_count: int = 0
     is_active: bool

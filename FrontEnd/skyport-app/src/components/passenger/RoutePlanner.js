@@ -216,6 +216,8 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
       gate: g,
       from: route?.fromVertiport?.name || from?.name || 'Origin',
       to: route?.toVertiport?.name || to?.name || 'Destination',
+      from_vertiport_id: route?.fromVertiport?.id ?? from?.id ?? null,
+      to_vertiport_id: route?.toVertiport?.id ?? to?.id ?? null,
       distance_km: route?.distance_km,
       duration_min: route?.duration_min,
       price_tl: route?.price_tl,

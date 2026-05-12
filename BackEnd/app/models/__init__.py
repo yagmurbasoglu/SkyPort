@@ -4,5 +4,6 @@ from app.models.nfz import NfzZone
 from app.models.report import Report
 from app.models.route import Route
 from app.models.vertiport import Vertiport
+from app.models.vertiport_review import VertiportReview
 
-__all__ = ["GeodataIngestJob", "GeodataH3Cell", "NfzZone", "ControlledAirspaceZone", "Report", "Route", "Vertiport"]
+__all__ = ["GeodataIngestJob", "GeodataH3Cell", "NfzZone", "ControlledAirspaceZone", "Report", "Route", "Vertiport", "VertiportReview"]

@@ -116,3 +116,23 @@ class AnalysisExportResponse(BaseModel):
     download_url: str | None = None
     geojson: dict | None = None
     report: dict | None = None
+
+
+class AnalysisReportItem(BaseModel):
+    report_id: int
+    analysis_id: int | None = None
+    format: str
+    file_name: str
+    analysis_name: str | None = None
+    created_at: datetime
+    download_url: str
+
+
+class AnalysisReportListResponse(BaseModel):
+    items: list[AnalysisReportItem]
+
+
+class AnalysisReportDeleteResponse(BaseModel):
+    report_id: int
+    file_name: str
+    message: str

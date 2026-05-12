@@ -1,5 +1,6 @@
 from typing import Any
 
+from sqlalchemy import delete
 from sqlalchemy import select
 
 from app.db.session import SessionLocal
@@ -47,3 +48,14 @@ def list_user_reports(user_id: int) -> list[dict[str, Any]]:
     with SessionLocal() as db:
         stmt = select(Report).where(Report.user_id == user_id).order_by(Report.created_at.desc())
         return [_report_to_dict(row) for row in db.execute(stmt).scalars().all()]
+
+
+def delete_report(report_id: int) -> dict[str, Any] | None:
+    with SessionLocal() as db:
+        report = db.get(Report, report_id)
+        if report is None:
+            return None
+        payload = _report_to_dict(report)
+        db.execute(delete(Report).where(Report.id == report_id))
+        db.commit()
+        return payload

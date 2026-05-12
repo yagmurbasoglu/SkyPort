@@ -3,6 +3,7 @@ from typing import Any
 from sqlalchemy import text
 
 from app.db.session import SessionLocal
+from app.models.vertiport import Vertiport
 
 
 def list_active_vertiports(
@@ -27,6 +28,8 @@ def list_active_vertiports(
             description,
             features,
             noise_level,
+            review_stats.average_rating,
+            COALESCE(review_stats.review_count, 0) AS review_count,
             CASE
                 WHEN :center_lat IS NULL OR :center_lng IS NULL THEN NULL
                 ELSE ST_DistanceSphere(
@@ -36,6 +39,14 @@ def list_active_vertiports(
             END AS distance_from_center_km,
             is_active
         FROM public.vertiports
+        LEFT JOIN (
+            SELECT
+                vertiport_id,
+                ROUND(AVG((satisfaction_rating + pilot_rating + comfort_rating) / 3.0)::numeric, 2) AS average_rating,
+                COUNT(*)::integer AS review_count
+            FROM public.vertiport_reviews
+            GROUP BY vertiport_id
+        ) AS review_stats ON review_stats.vertiport_id = vertiports.id
         WHERE is_active = true
           AND NOT EXISTS (
               SELECT 1
@@ -99,7 +110,21 @@ def list_active_vertiports(
                 "features": list(row["features"] or []),
                 "noise_level": row["noise_level"],
                 "distance_from_center_km": round(float(row["distance_from_center_km"]), 2) if row["distance_from_center_km"] is not None else None,
+                "average_rating": float(row["average_rating"]) if row["average_rating"] is not None else None,
+                "review_count": int(row["review_count"] or 0),
                 "is_active": bool(row["is_active"]),
             }
             for row in rows
         ]
+
+
+def get_vertiport(vertiport_id: int) -> dict[str, Any] | None:
+    with SessionLocal() as db:
+        vertiport = db.get(Vertiport, vertiport_id)
+        if vertiport is None:
+            return None
+        return {
+            "id": int(vertiport.id),
+            "name": vertiport.name,
+            "is_active": bool(vertiport.is_active),
+        }

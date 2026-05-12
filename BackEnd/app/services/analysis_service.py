@@ -274,6 +274,15 @@ def _wrap_pdf_text(text: str, max_chars: int) -> list[str]:
     return lines
 
 
+def _format_pdf_number(value: Any, decimals: int = 2) -> str:
+    if value is None:
+        return "-"
+    try:
+        return f"{float(value):.{decimals}f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def _write_analysis_pdf(
     path: Path,
     *,
@@ -297,9 +306,9 @@ def _write_analysis_pdf(
     card_gap = 12
     cards = [
         ("Cells", str(summary.get("cell_count", 0))),
-        ("Average", str(summary.get("average_score", "-"))),
-        ("Max", str(summary.get("max_score", "-"))),
-        ("Min", str(summary.get("min_score", "-"))),
+        ("Average", _format_pdf_number(summary.get("average_score"))),
+        ("Max", _format_pdf_number(summary.get("max_score"))),
+        ("Min", _format_pdf_number(summary.get("min_score"))),
     ]
     for index, (label, value) in enumerate(cards):
         x = 36 + index * (card_width + card_gap)
@@ -318,8 +327,8 @@ def _write_analysis_pdf(
 
     overview_lines = [
         "Method: AHP/TOPSIS suitability workflow",
-        f"Top score: {summary.get('max_score', '-')}",
-        f"Average score: {summary.get('average_score', '-')}",
+        f"Top score: {_format_pdf_number(summary.get('max_score'))}",
+        f"Average score: {_format_pdf_number(summary.get('average_score'))}",
     ]
     y = 558
     for line in overview_lines:
@@ -350,7 +359,16 @@ def _write_analysis_pdf(
         wrapped_notes = _wrap_pdf_text(note, 22)
         content_parts.append(_pdf_text(52, row_y, str(index), font="F2", size=10, color=(0.98, 0.99, 1.0)))
         content_parts.append(_pdf_text(108, row_y, str(row.get("cell_index", "-")), size=10, color=(0.88, 0.91, 0.96)))
-        content_parts.append(_pdf_text(330, row_y, str(row.get("suitability_score", "-")), font="F2", size=10, color=(0.55, 0.90, 0.69)))
+        content_parts.append(
+            _pdf_text(
+                330,
+                row_y,
+                _format_pdf_number(row.get("suitability_score")),
+                font="F2",
+                size=10,
+                color=(0.55, 0.90, 0.69),
+            )
+        )
         note_y = row_y
         for wrapped_line in wrapped_notes[:2]:
             content_parts.append(_pdf_text(400, note_y, wrapped_line, size=9, color=(0.82, 0.87, 0.93)))
@@ -927,6 +945,27 @@ class AnalysisService:
             })
         return {"items": items}
 
+    def get_user_reports(self, user_id: int) -> dict[str, Any]:
+        reports = report_repo.list_user_reports(user_id)
+        items = []
+        for report in reports:
+            file_path = Path(report.get("file_path") or "")
+            analysis = analysis_repo.get_analysis(report["analysis_id"]) if report.get("analysis_id") else None
+            items.append({
+                "report_id": report["id"],
+                "analysis_id": report.get("analysis_id"),
+                "format": report["report_format"],
+                "file_name": file_path.name or f"report-{report['id']}.{report['report_format']}",
+                "analysis_name": (
+                    analysis.get("saved_name")
+                    or analysis.get("region_name")
+                    or (f"Analysis {report['analysis_id']}" if report.get("analysis_id") else None)
+                ) if analysis or report.get("analysis_id") else None,
+                "created_at": report["created_at"],
+                "download_url": f"/api/analysis/reports/{report['id']}/download",
+            })
+        return {"items": items}
+
     def export_results(self, *, user_id: int, analysis_id: int, format: str = "geojson") -> dict[str, Any]:
         analysis = analysis_repo.get_analysis(analysis_id)
         if analysis is None:
@@ -1031,4 +1070,38 @@ class AnalysisService:
             "report_id": report["id"],
             "file_path": file_path,
             "format": report["report_format"],
+        }
+
+    def delete_report(self, *, user_id: int, report_id: int) -> dict[str, Any]:
+        report = report_repo.get_report(report_id)
+        if report is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "REPORT_NOT_FOUND", "Report not found.")
+        if report.get("user_id") not in (None, user_id):
+            raise _error(
+                status.HTTP_403_FORBIDDEN,
+                "REPORT_ACCESS_DENIED",
+                "You do not have permission to delete this report.",
+            )
+
+        raw_file_path = str(report.get("file_path") or "").strip()
+        file_path = Path(raw_file_path) if raw_file_path else None
+        file_name = (file_path.name if file_path else "") or f"report-{report_id}.{report.get('report_format') or 'bin'}"
+        if file_path and file_path.exists():
+            try:
+                file_path.unlink()
+            except OSError as exc:
+                raise _error(
+                    status.HTTP_409_CONFLICT,
+                    "REPORT_DELETE_FAILED",
+                    "Generated report file could not be deleted from disk.",
+                    {"reason": str(exc), "report_id": report_id},
+                ) from exc
+
+        deleted = report_repo.delete_report(report_id)
+        if deleted is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "REPORT_NOT_FOUND", "Report not found.")
+        return {
+            "report_id": report_id,
+            "file_name": file_name,
+            "message": "Report deleted successfully.",
         }

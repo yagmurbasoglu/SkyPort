@@ -87,6 +87,14 @@ const FavoritesSidebar = ({ favorites, vertiports = [], onToggle, onFlyTo }) => 
                   <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, color: '#cbd5e1', lineHeight: 1.3, mb: 0.4 }} noWrap>
                     {vp.name}
                   </Typography>
+                  {vp.reviewCount > 0 && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mb: 0.45 }}>
+                      <ReviewStars averageRating={vp.averageRating} />
+                      <Typography sx={{ fontSize: '0.64rem', color: '#94a3b8' }}>
+                        {Number(vp.averageRating).toFixed(1)} · {vp.reviewCount}
+                      </Typography>
+                    </Box>
+                  )}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.4 }}>
                     {vp.features.slice(0, 2).map((f) => (
                       <Typography key={f} sx={{ fontSize: '0.68rem', color: '#475569' }}>
@@ -136,6 +144,25 @@ const scoreColor = (score) => {
   if (score >= 85) return '#22c55e';
   if (score >= 70) return '#eab308';
   return '#ef4444';
+};
+
+const ReviewStars = ({ averageRating = 0 }) => {
+  const width = Math.max(0, Math.min((Number(averageRating || 0) / 5) * 100, 100));
+
+  return (
+    <Box sx={{ position: 'relative', width: 52, height: 12, display: 'inline-flex' }}>
+      <Box sx={{ position: 'absolute', inset: 0, display: 'flex', color: '#334155' }}>
+        {[0, 1, 2, 3, 4].map((item) => (
+          <StarIcon key={`favorite-star-bg-${item}`} sx={{ fontSize: 12 }} />
+        ))}
+      </Box>
+      <Box sx={{ position: 'absolute', inset: 0, width: `${width}%`, overflow: 'hidden', display: 'flex', color: '#f59e0b' }}>
+        {[0, 1, 2, 3, 4].map((item) => (
+          <StarIcon key={`favorite-star-fill-${item}`} sx={{ fontSize: 12 }} />
+        ))}
+      </Box>
+    </Box>
+  );
 };
 
 export default FavoritesSidebar;

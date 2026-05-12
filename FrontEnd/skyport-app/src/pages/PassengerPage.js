@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Backdrop,
   Box,
+  Button,
   Chip,
   Fade,
   IconButton,
+  Modal,
   Paper,
   Tab,
   Tabs,
@@ -39,6 +42,23 @@ const DEFAULT_FILTERS = {
 };
 
 const CENTER = { lat: 41.0369, lng: 28.985 };
+const MOCK_REVIEW_STORAGE_KEY = 'skyport_mock_vertiport_reviews';
+const REVIEW_QUESTIONS = [
+  { key: 'satisfaction_rating', label: 'Memnuniyet Orani' },
+  { key: 'pilot_rating', label: 'Pilot Degerlendirmesi' },
+  { key: 'comfort_rating', label: 'Boarding Konforu' },
+];
+
+const buildEmptyReviewDraft = () => ({
+  satisfaction_rating: 0,
+  pilot_rating: 0,
+  comfort_rating: 0,
+});
+
+const buildEmptyFlightReviewDraft = () => ({
+  departure: buildEmptyReviewDraft(),
+  arrival: buildEmptyReviewDraft(),
+});
 
 const distanceKm = (a, b) => {
   const radius = 6371;
@@ -54,6 +74,76 @@ const distanceKm = (a, b) => {
 
 const estimateTripPrice = (distanceFromCenter, pricePerKm = 120) =>
   Math.round(Number(distanceFromCenter || 0) * Number(pricePerKm || 120));
+
+const calculateOverallRating = (review) => (
+  Number(
+    (
+      (Number(review.satisfaction_rating || 0) +
+        Number(review.pilot_rating || 0) +
+        Number(review.comfort_rating || 0)) / 3
+    ).toFixed(2)
+  )
+);
+
+const isDbVertiportId = (id) => Number.isInteger(id);
+
+const readMockReviews = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(MOCK_REVIEW_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeMockReviews = (reviews) => {
+  localStorage.setItem(MOCK_REVIEW_STORAGE_KEY, JSON.stringify(reviews));
+};
+
+const getReviewKey = (flightNo, vertiportId) => `${flightNo}:${vertiportId}`;
+
+const upsertMockReview = (review) => {
+  const existing = readMockReviews().filter(
+    (item) => !(item.flight_no === review.flight_no && String(item.vertiport_id) === String(review.vertiport_id))
+  );
+  const next = [review, ...existing].slice(0, 100);
+  writeMockReviews(next);
+  return next;
+};
+
+const buildReviewAggregateMap = (reviews) => {
+  const aggregate = new Map();
+  reviews.forEach((review) => {
+    const key = String(review.vertiport_id);
+    if (!aggregate.has(key)) {
+      aggregate.set(key, { sum: 0, count: 0 });
+    }
+    const bucket = aggregate.get(key);
+    bucket.sum += Number(review.overall_rating ?? calculateOverallRating(review) ?? 0);
+    bucket.count += 1;
+  });
+  return new Map(
+    Array.from(aggregate.entries()).map(([key, value]) => [
+      key,
+      {
+        averageRating: Number((value.sum / value.count).toFixed(2)),
+        reviewCount: value.count,
+      },
+    ])
+  );
+};
+
+const applyReviewAggregateToVertiports = (items, reviews) => {
+  const aggregateMap = buildReviewAggregateMap(reviews);
+  return items.map((vertiport) => {
+    const stats = aggregateMap.get(String(vertiport.id));
+    return {
+      ...vertiport,
+      averageRating: stats?.averageRating ?? null,
+      reviewCount: stats?.reviewCount ?? 0,
+    };
+  });
+};
 
 const normalizeDbVertiport = (vp) => {
   const distanceFromCenter = Number(
@@ -71,6 +161,8 @@ const normalizeDbVertiport = (vp) => {
     description: vp.description || 'Active vertiport from the SkyPort operational network.',
     noiseLevel: vp.noise_level || null,
     distanceFromCenter,
+    averageRating: vp.average_rating !== null && vp.average_rating !== undefined ? Number(vp.average_rating) : null,
+    reviewCount: Number(vp.review_count || 0),
   };
 };
 
@@ -80,6 +172,30 @@ const scoreColor = (score) => {
   return '#ef4444';
 };
 
+const resolveFlightTarget = (preferredId, fallbackName, vertiports, role) => {
+  if (preferredId !== undefined && preferredId !== null) {
+    const byId = vertiports.find((vertiport) => String(vertiport.id) === String(preferredId));
+    if (byId) {
+      return { role, vertiportId: byId.id, name: byId.name };
+    }
+    return { role, vertiportId: preferredId, name: fallbackName || 'Unknown vertiport' };
+  }
+  const byName = vertiports.find((vertiport) => vertiport.name === fallbackName);
+  if (!byName) return null;
+  return { role, vertiportId: byName.id, name: byName.name };
+};
+
+const resolveFlightReviewTargets = (flight, vertiports) => {
+  const targets = [
+    resolveFlightTarget(flight?.from_vertiport_id, flight?.from, vertiports, 'departure'),
+    resolveFlightTarget(flight?.to_vertiport_id, flight?.to, vertiports, 'arrival'),
+  ].filter(Boolean);
+
+  return targets.filter((target, index, items) => (
+    items.findIndex((item) => String(item.vertiportId) === String(target.vertiportId) && item.role === target.role) === index
+  ));
+};
+
 const PassengerPage = () => {
   const { user } = useAuth();
   const [activeMode, setActiveMode] = useState('map');
@@ -87,8 +203,10 @@ const PassengerPage = () => {
   const [selectedVertiport, setSelectedVertiport] = useState(null);
   const [route, setRoute] = useState(null);
   const [flyToTarget, setFlyToTarget] = useState(null);
-  const [vertiports, setVertiports] = useState(MOCK_VERTIPORTS);
+  const [vertiports, setVertiports] = useState(() => applyReviewAggregateToVertiports(MOCK_VERTIPORTS, readMockReviews()));
   const [usingMockData, setUsingMockData] = useState(false);
+  const [liveDataUnavailable, setLiveDataUnavailable] = useState(false);
+  const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
   const [flightHistory, setFlightHistory] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('skyport_flight_history') || '[]');
@@ -96,6 +214,13 @@ const PassengerPage = () => {
       return [];
     }
   });
+  const [userFlightReviews, setUserFlightReviews] = useState({});
+  const [reviewFlight, setReviewFlight] = useState(null);
+  const [reviewDraft, setReviewDraft] = useState(buildEmptyFlightReviewDraft);
+  const [reviewHover, setReviewHover] = useState({});
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState('');
 
   const [favorites, setFavorites] = useState(() => {
     try {
@@ -117,6 +242,33 @@ const PassengerPage = () => {
         // Fall back to localStorage when backend is unavailable.
       });
   }, [user?.id]);
+
+  useEffect(() => {
+    let alive = true;
+    const next = {};
+    readMockReviews().forEach((review) => {
+      next[getReviewKey(review.flight_no, review.vertiport_id)] = review;
+    });
+
+    axios.get('/api/vertiport-reviews/me')
+      .then((response) => {
+        if (!alive) return;
+        const items = Array.isArray(response.data?.items) ? response.data.items : [];
+        items.forEach((review) => {
+          next[getReviewKey(review.flight_no, review.vertiport_id)] = review;
+        });
+        setUserFlightReviews(next);
+      })
+      .catch(() => {
+        if (alive) {
+          setUserFlightReviews(next);
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [user?.id, reviewRefreshKey]);
 
   const toggleFavorite = async (id) => {
     const isFav = favorites.includes(id);
@@ -157,25 +309,30 @@ const PassengerPage = () => {
           ? response.data.map(normalizeDbVertiport)
           : [];
 
-        if (active.length > 0) {
-          setVertiports(active);
-          setUsingMockData(false);
-        } else {
-          setVertiports(MOCK_VERTIPORTS);
-          setUsingMockData(true);
-        }
+        setVertiports(active);
+        setUsingMockData(false);
+        setLiveDataUnavailable(false);
       })
       .catch(() => {
         if (alive) {
-          setVertiports(MOCK_VERTIPORTS);
+          setVertiports(applyReviewAggregateToVertiports(MOCK_VERTIPORTS, readMockReviews()));
           setUsingMockData(true);
+          setLiveDataUnavailable(true);
         }
       });
 
     return () => {
       alive = false;
     };
-  }, [filters]);
+  }, [filters, reviewRefreshKey]);
+
+  useEffect(() => {
+    if (!selectedVertiport) return;
+    const nextSelected = vertiports.find((vertiport) => vertiport.id === selectedVertiport.id);
+    if (nextSelected && nextSelected !== selectedVertiport) {
+      setSelectedVertiport(nextSelected);
+    }
+  }, [selectedVertiport, vertiports]);
 
   const filteredVertiports = useMemo(() => (
     vertiports.filter((vp) => {
@@ -205,6 +362,99 @@ const PassengerPage = () => {
     setFlightHistory([]);
   };
 
+  const handleOpenReview = (flight) => {
+    const targets = resolveFlightReviewTargets(flight, vertiports);
+    const departureTarget = targets.find((target) => target.role === 'departure');
+    const arrivalTarget = targets.find((target) => target.role === 'arrival');
+    setReviewFlight(flight);
+    setReviewDraft({
+      departure: departureTarget
+        ? {
+            satisfaction_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, departureTarget.vertiportId)]?.satisfaction_rating || 0),
+            pilot_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, departureTarget.vertiportId)]?.pilot_rating || 0),
+            comfort_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, departureTarget.vertiportId)]?.comfort_rating || 0),
+          }
+        : buildEmptyReviewDraft(),
+      arrival: arrivalTarget
+        ? {
+            satisfaction_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, arrivalTarget.vertiportId)]?.satisfaction_rating || 0),
+            pilot_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, arrivalTarget.vertiportId)]?.pilot_rating || 0),
+            comfort_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, arrivalTarget.vertiportId)]?.comfort_rating || 0),
+          }
+        : buildEmptyReviewDraft(),
+    });
+    setReviewHover({});
+    setReviewError('');
+    setReviewModalOpen(true);
+  };
+
+  const handleCloseReview = () => {
+    setReviewModalOpen(false);
+    setReviewFlight(null);
+    setReviewHover({});
+    setReviewDraft(buildEmptyFlightReviewDraft());
+    setReviewError('');
+  };
+
+  const handleSubmitReview = async () => {
+    if (!reviewFlight) return;
+    const targets = resolveFlightReviewTargets(reviewFlight, vertiports);
+    if (!targets.length) {
+      setReviewError('This flight cannot be matched to a vertiport for rating.');
+      return;
+    }
+    const missingSection = targets.find((target) => (
+      REVIEW_QUESTIONS.some((question) => !reviewDraft[target.role]?.[question.key])
+    ));
+    if (missingSection) {
+      setReviewError('Please rate all three questions for both departure and arrival before saving.');
+      return;
+    }
+
+    setReviewSubmitting(true);
+    setReviewError('');
+    try {
+      if (!usingMockData && targets.every((target) => isDbVertiportId(target.vertiportId))) {
+        await Promise.all(targets.map((target) => axios.post('/api/vertiport-reviews', {
+          vertiport_id: target.vertiportId,
+          flight_no: reviewFlight.flightNo,
+          satisfaction_rating: reviewDraft[target.role].satisfaction_rating,
+          pilot_rating: reviewDraft[target.role].pilot_rating,
+          comfort_rating: reviewDraft[target.role].comfort_rating,
+        })));
+        setReviewRefreshKey((prev) => prev + 1);
+      } else {
+        let nextMockReviews = readMockReviews();
+        const nextUserReviews = { ...userFlightReviews };
+        targets.forEach((target) => {
+          const reviewKey = getReviewKey(reviewFlight.flightNo, target.vertiportId);
+          const existing = userFlightReviews[reviewKey];
+          const localReview = {
+            id: existing?.id || `local-${reviewFlight.flightNo}-${target.vertiportId}`,
+            user_id: user?.id ?? null,
+            vertiport_id: target.vertiportId,
+            flight_no: reviewFlight.flightNo,
+            satisfaction_rating: reviewDraft[target.role].satisfaction_rating,
+            pilot_rating: reviewDraft[target.role].pilot_rating,
+            comfort_rating: reviewDraft[target.role].comfort_rating,
+            overall_rating: calculateOverallRating(reviewDraft[target.role]),
+            created_at: existing?.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          nextMockReviews = upsertMockReview(localReview);
+          nextUserReviews[reviewKey] = localReview;
+        });
+        setUserFlightReviews(nextUserReviews);
+        setVertiports(applyReviewAggregateToVertiports(MOCK_VERTIPORTS, nextMockReviews));
+      }
+      handleCloseReview();
+    } catch (error) {
+      setReviewError(error.response?.data?.message || error.response?.data?.detail || error.message);
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: '#020617' }}>
       <Navbar />
@@ -218,7 +468,7 @@ const PassengerPage = () => {
           flyToTarget={flyToTarget}
         />
 
-        {usingMockData && (
+        {liveDataUnavailable && (
           <Chip
             icon={<WifiOffIcon sx={{ fontSize: 14 }} />}
             label="Demo Mode - Live data unavailable"
@@ -343,7 +593,13 @@ const PassengerPage = () => {
         <Fade in={activeMode === 'history'}>
           <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
             <Box sx={{ pointerEvents: 'auto', display: 'inline-block' }}>
-              <PastFlightsSidebar flightHistory={flightHistory} onClear={handleClearFlightHistory} />
+              <PastFlightsSidebar
+                flightHistory={flightHistory}
+                onClear={handleClearFlightHistory}
+                onReview={handleOpenReview}
+                reviewedFlights={userFlightReviews}
+                vertiports={vertiports}
+              />
             </Box>
           </Box>
         </Fade>
@@ -369,6 +625,20 @@ const PassengerPage = () => {
             )}
           </Box>
         </Fade>
+
+        <ReviewFlightModal
+          open={reviewModalOpen}
+          flight={reviewFlight}
+          vertiports={vertiports}
+          draft={reviewDraft}
+          hover={reviewHover}
+          onClose={handleCloseReview}
+          onChange={(role, key, value) => setReviewDraft((prev) => ({ ...prev, [role]: { ...prev[role], [key]: value } }))}
+          onHoverChange={(role, key, value) => setReviewHover((prev) => ({ ...prev, [role]: { ...(prev[role] || {}), [key]: value } }))}
+          onSubmit={handleSubmitReview}
+          error={reviewError}
+          submitting={reviewSubmitting}
+        />
       </Box>
     </Box>
   );
@@ -417,6 +687,7 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
         <Typography sx={{ fontSize: '0.72rem', color: '#64748b' }}>
           {vp.distanceFromCenter} km from center - TL {vp.pricePerKm}/km - Est. TL {vp.estimatedTripPrice}
         </Typography>
+        <ReviewSummary averageRating={vp.averageRating} reviewCount={vp.reviewCount} />
       </Box>
 
       <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
@@ -455,42 +726,49 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
   </Paper>
 );
 
-const PastFlightsSidebar = ({ flightHistory, onClear }) => {
-  return (
-    <Paper
-      sx={{
-        position: 'absolute',
-        top: '50%',
-        left: 24,
-        transform: 'translateY(-50%)',
-        width: 320,
-        background: 'rgba(2, 6, 23, 0.92)',
-        backdropFilter: 'blur(14px)',
-        border: '1px solid rgba(255,255,255,0.07)',
-        borderRadius: '14px',
-        maxHeight: 'calc(100vh - 180px)',
-        overflowY: 'auto',
-      }}
-    >
-      <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 1 }}>
-        <HistoryIcon sx={{ fontSize: 16, color: '#e17b8f' }} />
-        <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-          Past Flights
-        </Typography>
-        {flightHistory.length > 0 && (
-          <IconButton
-            size="small"
-            onClick={onClear}
-            sx={{ ml: 'auto', color: '#475569', '&:hover': { color: '#f87171' } }}
-          >
-            <DeleteSweepIcon sx={{ fontSize: 17 }} />
-          </IconButton>
-        )}
-      </Box>
-      <Box sx={{ p: 2 }}>
-        {flightHistory.length === 0 ? (
-          <Typography sx={{ fontSize: '0.78rem', color: '#475569', textAlign: 'center', mt: 3 }}>No flights yet.</Typography>
-        ) : flightHistory.map((flight, index) => (
+const PastFlightsSidebar = ({ flightHistory, onClear, onReview, reviewedFlights, vertiports }) => (
+  <Paper
+    sx={{
+      position: 'absolute',
+      top: '50%',
+      left: 24,
+      transform: 'translateY(-50%)',
+      width: 320,
+      background: 'rgba(2, 6, 23, 0.92)',
+      backdropFilter: 'blur(14px)',
+      border: '1px solid rgba(255,255,255,0.07)',
+      borderRadius: '14px',
+      maxHeight: 'calc(100vh - 180px)',
+      overflowY: 'auto',
+    }}
+  >
+    <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 1 }}>
+      <HistoryIcon sx={{ fontSize: 16, color: '#e17b8f' }} />
+      <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+        Past Flights
+      </Typography>
+      {flightHistory.length > 0 && (
+        <IconButton
+          size="small"
+          onClick={onClear}
+          sx={{ ml: 'auto', color: '#475569', '&:hover': { color: '#f87171' } }}
+        >
+          <DeleteSweepIcon sx={{ fontSize: 17 }} />
+        </IconButton>
+      )}
+    </Box>
+    <Box sx={{ p: 2 }}>
+      {flightHistory.length === 0 ? (
+        <Typography sx={{ fontSize: '0.78rem', color: '#475569', textAlign: 'center', mt: 3 }}>No flights yet.</Typography>
+      ) : flightHistory.map((flight, index) => {
+        const targets = resolveFlightReviewTargets(flight, vertiports);
+        const canReview = targets.length > 0;
+        const departureTarget = targets.find((target) => target.role === 'departure');
+        const arrivalTarget = targets.find((target) => target.role === 'arrival');
+        const departureReview = departureTarget ? reviewedFlights[getReviewKey(flight.flightNo, departureTarget.vertiportId)] : null;
+        const arrivalReview = arrivalTarget ? reviewedFlights[getReviewKey(flight.flightNo, arrivalTarget.vertiportId)] : null;
+        const hasSavedReview = Boolean(departureReview || arrivalReview);
+        return (
           <Box key={index} sx={{ mb: 1.2, p: 1.5, borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
               <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#e17b8f' }}>{flight.flightNo}</Typography>
@@ -503,10 +781,229 @@ const PastFlightsSidebar = ({ flightHistory, onClear }) => {
               {flight.distance_km} km - {flight.duration_min} min - TL {flight.price_tl}
             </Typography>
             <Typography sx={{ fontSize: '0.6rem', color: '#334155', mt: 0.2 }}>{flight.date}</Typography>
+
+            <Box sx={{ mt: 1.2, pt: 1.1, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <Typography sx={{ fontSize: '0.64rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', mb: 0.7 }}>
+                Degerlendir
+              </Typography>
+              {hasSavedReview ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.45 }}>
+                    {departureTarget && (
+                      <FlightReviewStatusRow
+                        label="Departure"
+                        vertiportName={departureTarget.name}
+                        review={departureReview}
+                      />
+                    )}
+                    {arrivalTarget && (
+                      <FlightReviewStatusRow
+                        label="Arrival"
+                        vertiportName={arrivalTarget.name}
+                        review={arrivalReview}
+                      />
+                    )}
+                  </Box>
+                  <Button
+                    size="small"
+                    onClick={() => onReview(flight)}
+                    sx={{ color: '#f8fafc', background: 'rgba(225,123,143,0.16)', borderRadius: '8px', textTransform: 'none', px: 1.3 }}
+                  >
+                    Edit
+                  </Button>
+                </Box>
+              ) : (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                  <Typography sx={{ fontSize: '0.66rem', color: canReview ? '#64748b' : '#fca5a5', lineHeight: 1.5 }}>
+                    {canReview ? 'Share your experience for this flight.' : 'Legacy flight cannot be matched to a review target.'}
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={() => onReview(flight)}
+                    disabled={!canReview}
+                    sx={{ color: '#f8fafc', background: 'linear-gradient(135deg, #e17b8f, #be123c)', borderRadius: '8px', textTransform: 'none', px: 1.3, '&.Mui-disabled': { color: '#64748b', background: 'rgba(255,255,255,0.06)' } }}
+                  >
+                    Evaluate
+                  </Button>
+                </Box>
+              )}
+            </Box>
           </Box>
+        );
+      })}
+    </Box>
+  </Paper>
+);
+
+const ReviewFlightModal = ({
+  open,
+  flight,
+  vertiports,
+  draft,
+  hover,
+  onClose,
+  onChange,
+  onHoverChange,
+  onSubmit,
+  error,
+  submitting,
+}) => {
+  const targets = resolveFlightReviewTargets(flight, vertiports);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      closeAfterTransition
+      BackdropComponent={Backdrop}
+      BackdropProps={{ timeout: 250, sx: { backdropFilter: 'blur(6px)', background: 'rgba(2,6,23,0.72)' } }}
+    >
+      <Fade in={open}>
+        <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 'min(92vw, 540px)', outline: 'none' }}>
+          <Paper sx={{ background: 'rgba(2, 6, 23, 0.96)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '18px', boxShadow: '0 32px 80px rgba(0,0,0,0.52)', overflow: 'hidden' }}>
+            <Box sx={{ px: 2.5, py: 2, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1rem' }}>
+                  Flight Review
+                </Typography>
+                <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem', mt: 0.4, lineHeight: 1.5 }}>
+                  {flight ? `${flight.from} to ${flight.to} - ${flight.flightNo}` : 'Rate your recent flight experience'}
+                </Typography>
+              </Box>
+              <IconButton onClick={onClose} size="small" sx={{ color: '#64748b', '&:hover': { color: '#e2e8f0' } }}>
+                <CloseIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Box>
+
+            <Box sx={{ p: 2.5 }}>
+              {targets.map((target, index) => (
+                <Box key={`${target.role}-${target.vertiportId}`} sx={{ mb: index === targets.length - 1 ? 0 : 2.5, p: 1.6, borderRadius: '14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <Typography sx={{ color: '#f8fafc', fontSize: '0.84rem', fontWeight: 800 }}>
+                    {target.role === 'departure' ? 'Departure Vertiport' : 'Arrival Vertiport'}
+                  </Typography>
+                  <Typography sx={{ color: '#94a3b8', fontSize: '0.7rem', mt: 0.35, mb: 1.2 }}>
+                    {target.name}
+                  </Typography>
+
+                  {REVIEW_QUESTIONS.map((question) => (
+                    <Box key={`${target.role}-${question.key}`} sx={{ mb: 1.8 }}>
+                      <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>
+                        {question.label}
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.2, mt: 0.6 }}>
+                        {[1, 2, 3, 4, 5].map((value) => {
+                          const activeValue = hover[target.role]?.[question.key] || draft[target.role]?.[question.key];
+                          return (
+                            <IconButton
+                              key={`${target.role}-${question.key}-${value}`}
+                              onClick={() => onChange(target.role, question.key, value)}
+                              onMouseEnter={() => onHoverChange(target.role, question.key, value)}
+                              onMouseLeave={() => onHoverChange(target.role, question.key, 0)}
+                              sx={{ p: 0.25, color: value <= activeValue ? '#f59e0b' : '#334155', transition: 'transform 0.12s ease, color 0.12s ease', '&:hover': { transform: 'translateY(-1px)' } }}
+                            >
+                              {value <= activeValue ? <StarIcon sx={{ fontSize: 28 }} /> : <StarBorderIcon sx={{ fontSize: 28 }} />}
+                            </IconButton>
+                          );
+                        })}
+                        <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem', ml: 0.8 }}>
+                          {(hover[target.role]?.[question.key] || draft[target.role]?.[question.key] || 0)}/5
+                        </Typography>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              ))}
+
+              {error && (
+                <Typography sx={{ color: '#fca5a5', fontSize: '0.72rem', lineHeight: 1.5, mt: 1.2 }}>
+                  {error}
+                </Typography>
+              )}
+
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.2, mt: 2.5 }}>
+                <Button
+                  onClick={onClose}
+                  sx={{ color: '#94a3b8', borderRadius: '10px', textTransform: 'none', px: 1.6 }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={onSubmit}
+                  disabled={submitting}
+                  sx={{ color: '#fff', background: 'linear-gradient(135deg, #e17b8f, #be123c)', borderRadius: '10px', textTransform: 'none', fontWeight: 700, px: 2.2, '&.Mui-disabled': { color: '#cbd5e1', background: 'rgba(255,255,255,0.12)' } }}
+                >
+                  {submitting ? 'Saving...' : 'Save Review'}
+                </Button>
+              </Box>
+            </Box>
+          </Paper>
+        </Box>
+      </Fade>
+    </Modal>
+  );
+};
+
+const ReviewSummary = ({ averageRating, reviewCount }) => {
+  if (!reviewCount || !averageRating) {
+    return (
+      <Typography sx={{ fontSize: '0.66rem', color: '#475569', mt: 0.7 }}>
+        No passenger ratings yet
+      </Typography>
+    );
+  }
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mt: 0.7, flexWrap: 'wrap' }}>
+      <StaticStarRating averageRating={averageRating} size={16} />
+      <Typography sx={{ fontSize: '0.68rem', color: '#f8fafc', fontWeight: 700 }}>
+        {Number(averageRating).toFixed(1)}
+      </Typography>
+      <Typography sx={{ fontSize: '0.66rem', color: '#64748b' }}>
+        {reviewCount} passenger review{reviewCount === 1 ? '' : 's'}
+      </Typography>
+    </Box>
+  );
+};
+
+const FlightReviewStatusRow = ({ label, vertiportName, review }) => (
+  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, flexWrap: 'wrap' }}>
+    <Typography sx={{ fontSize: '0.62rem', color: '#94a3b8', fontWeight: 700, minWidth: 54 }}>
+      {label}
+    </Typography>
+    <Typography sx={{ fontSize: '0.64rem', color: '#64748b', maxWidth: 118 }} noWrap>
+      {vertiportName}
+    </Typography>
+    {review ? (
+      <>
+        <StaticStarRating averageRating={review.overall_rating} size={14} />
+        <Typography sx={{ fontSize: '0.62rem', color: '#e2e8f0' }}>
+          {Number(review.overall_rating).toFixed(1)}/5
+        </Typography>
+      </>
+    ) : (
+      <Typography sx={{ fontSize: '0.62rem', color: '#475569' }}>
+        Not rated
+      </Typography>
+    )}
+  </Box>
+);
+
+const StaticStarRating = ({ averageRating = 0, size = 18 }) => {
+  const width = Math.max(0, Math.min((Number(averageRating || 0) / 5) * 100, 100));
+
+  return (
+    <Box sx={{ position: 'relative', width: size * 5, height: size, display: 'inline-flex' }}>
+      <Box sx={{ position: 'absolute', inset: 0, display: 'flex', color: '#334155' }}>
+        {[0, 1, 2, 3, 4].map((item) => (
+          <StarIcon key={`star-bg-${item}`} sx={{ fontSize: size }} />
         ))}
       </Box>
-    </Paper>
+      <Box sx={{ position: 'absolute', inset: 0, width: `${width}%`, overflow: 'hidden', display: 'flex', color: '#f59e0b' }}>
+        {[0, 1, 2, 3, 4].map((item) => (
+          <StarIcon key={`star-fill-${item}`} sx={{ fontSize: size }} />
+        ))}
+      </Box>
+    </Box>
   );
 };
 

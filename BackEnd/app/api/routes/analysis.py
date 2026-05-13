@@ -17,6 +17,7 @@ from app.schemas.analysis import (
     AnalysisResultResponse,
     AnalysisStatusResponse,
     AnalysisHistoryResponse,
+    AnalysisHistoryDeleteResponse,
     AnalysisExportResponse,
     AnalysisReportDeleteResponse,
     AnalysisReportListResponse,
@@ -134,6 +135,15 @@ def get_analysis_history(
     """
     result = AnalysisService().get_user_history(current_user.id)
     return AnalysisHistoryResponse(**result)
+
+
+@router.delete("/history/{analysis_id}", response_model=AnalysisHistoryDeleteResponse)
+def delete_saved_analysis(
+    analysis_id: int,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisHistoryDeleteResponse:
+    result = AnalysisService().delete_saved_analysis(user_id=current_user.id, analysis_id=analysis_id)
+    return AnalysisHistoryDeleteResponse(**result)
 
 
 @router.get("/reports", response_model=AnalysisReportListResponse)

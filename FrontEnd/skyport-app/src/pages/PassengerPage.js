@@ -45,13 +45,11 @@ const CENTER = { lat: 41.0369, lng: 28.985 };
 const MOCK_REVIEW_STORAGE_KEY = 'skyport_mock_vertiport_reviews';
 const REVIEW_QUESTIONS = [
   { key: 'satisfaction_rating', label: 'Memnuniyet Orani' },
-  { key: 'pilot_rating', label: 'Pilot Degerlendirmesi' },
   { key: 'comfort_rating', label: 'Boarding Konforu' },
 ];
 
 const buildEmptyReviewDraft = () => ({
   satisfaction_rating: 0,
-  pilot_rating: 0,
   comfort_rating: 0,
 });
 
@@ -79,8 +77,7 @@ const calculateOverallRating = (review) => (
   Number(
     (
       (Number(review.satisfaction_rating || 0) +
-        Number(review.pilot_rating || 0) +
-        Number(review.comfort_rating || 0)) / 3
+        Number(review.comfort_rating || 0)) / 2
     ).toFixed(2)
   )
 );
@@ -145,6 +142,38 @@ const applyReviewAggregateToVertiports = (items, reviews) => {
   });
 };
 
+const parseFlightSchedule = (flight) => {
+  if (!flight?.departure_date || !flight?.departure_time) return null;
+  const parsed = new Date(`${flight.departure_date}T${flight.departure_time}:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const LEGACY_FLIGHT_HISTORY_KEY = 'skyport_flight_history';
+const buildFlightHistoryStorageKey = (user) => (
+  user?.id ? `skyport_flight_history_user_${user.id}` : 'skyport_flight_history_guest'
+);
+
+const sidebarScrollSx = {
+  scrollbarWidth: 'thin',
+  scrollbarColor: 'rgba(148,163,184,0.58) rgba(15,23,42,0.34)',
+  '&::-webkit-scrollbar': {
+    width: 10,
+    height: 10,
+  },
+  '&::-webkit-scrollbar-track': {
+    background: 'rgba(15,23,42,0.34)',
+    borderRadius: '8px',
+  },
+  '&::-webkit-scrollbar-thumb': {
+    background: 'rgba(148,163,184,0.58)',
+    borderRadius: '8px',
+    border: '2px solid rgba(15,23,42,0.34)',
+  },
+  '&::-webkit-scrollbar-thumb:hover': {
+    background: 'rgba(203,213,225,0.72)',
+  },
+};
+
 const normalizeDbVertiport = (vp) => {
   const distanceFromCenter = Number(
     (vp.distance_from_center_km ?? distanceKm(CENTER, { lat: Number(vp.lat), lng: Number(vp.lng) })).toFixed(1)
@@ -198,6 +227,7 @@ const resolveFlightReviewTargets = (flight, vertiports) => {
 
 const PassengerPage = () => {
   const { user } = useAuth();
+  const flightHistoryStorageKey = useMemo(() => buildFlightHistoryStorageKey(user), [user]);
   const [activeMode, setActiveMode] = useState('map');
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedVertiport, setSelectedVertiport] = useState(null);
@@ -207,13 +237,7 @@ const PassengerPage = () => {
   const [usingMockData, setUsingMockData] = useState(false);
   const [liveDataUnavailable, setLiveDataUnavailable] = useState(false);
   const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
-  const [flightHistory, setFlightHistory] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('skyport_flight_history') || '[]');
-    } catch {
-      return [];
-    }
-  });
+  const [flightHistory, setFlightHistory] = useState([]);
   const [userFlightReviews, setUserFlightReviews] = useState({});
   const [reviewFlight, setReviewFlight] = useState(null);
   const [reviewDraft, setReviewDraft] = useState(buildEmptyFlightReviewDraft);
@@ -221,6 +245,9 @@ const PassengerPage = () => {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewError, setReviewError] = useState('');
+  const [historyNow, setHistoryNow] = useState(() => Date.now());
+  const [bookingRefreshKey, setBookingRefreshKey] = useState(0);
+  const [cancellingFlightKey, setCancellingFlightKey] = useState('');
 
   const [favorites, setFavorites] = useState(() => {
     try {
@@ -229,6 +256,26 @@ const PassengerPage = () => {
       return [];
     }
   });
+
+  useEffect(() => {
+    try {
+      const scoped = JSON.parse(localStorage.getItem(flightHistoryStorageKey) || '[]');
+      setFlightHistory(Array.isArray(scoped) ? scoped : []);
+    } catch {
+      setFlightHistory([]);
+    }
+
+    if (localStorage.getItem(LEGACY_FLIGHT_HISTORY_KEY)) {
+      localStorage.removeItem(LEGACY_FLIGHT_HISTORY_KEY);
+    }
+  }, [flightHistoryStorageKey]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setHistoryNow(Date.now());
+    }, 60000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     axios.get('/api/favorites')
@@ -354,13 +401,66 @@ const PassengerPage = () => {
   };
 
   const handleFlightBooked = (entry) => {
-    setFlightHistory((prev) => [entry, ...prev].slice(0, 20));
+    setFlightHistory((prev) => {
+      const next = [entry, ...prev].slice(0, 20);
+      localStorage.setItem(flightHistoryStorageKey, JSON.stringify(next));
+      return next;
+    });
+    setBookingRefreshKey((prev) => prev + 1);
   };
 
   const handleClearFlightHistory = () => {
-    localStorage.removeItem('skyport_flight_history');
-    setFlightHistory([]);
+    setFlightHistory((prev) => {
+      const next = prev.filter((flight) => {
+        const schedule = parseFlightSchedule(flight);
+        return schedule && schedule.getTime() > historyNow;
+      });
+      localStorage.setItem(flightHistoryStorageKey, JSON.stringify(next));
+      return next;
+    });
   };
+
+  const handleCancelUpcomingFlight = async (flight) => {
+    const flightKey = `${flight.flightNo}:${flight.departure_date}:${flight.departure_time}`;
+    setCancellingFlightKey(flightKey);
+    try {
+      if (flight.booking_id) {
+        try {
+          await axios.delete(`/api/bookings/${flight.booking_id}`);
+        } catch (err) {
+          if (err.response?.status !== 404) {
+            throw err;
+          }
+        }
+      }
+      setFlightHistory((prev) => {
+        const next = prev.filter((item) => !(
+          item.flightNo === flight.flightNo
+          && item.departure_date === flight.departure_date
+          && item.departure_time === flight.departure_time
+        ));
+        localStorage.setItem(flightHistoryStorageKey, JSON.stringify(next));
+        return next;
+      });
+      setBookingRefreshKey((prev) => prev + 1);
+    } finally {
+      setCancellingFlightKey('');
+    }
+  };
+
+  const upcomingFlights = useMemo(() => (
+    flightHistory.filter((flight) => {
+      const schedule = parseFlightSchedule(flight);
+      return schedule && schedule.getTime() > historyNow;
+    })
+  ), [flightHistory, historyNow]);
+
+  const pastFlights = useMemo(() => (
+    flightHistory.filter((flight) => {
+      const schedule = parseFlightSchedule(flight);
+      return !schedule || schedule.getTime() <= historyNow;
+    })
+  ), [flightHistory, historyNow]);
 
   const handleOpenReview = (flight) => {
     const targets = resolveFlightReviewTargets(flight, vertiports);
@@ -371,14 +471,12 @@ const PassengerPage = () => {
       departure: departureTarget
         ? {
             satisfaction_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, departureTarget.vertiportId)]?.satisfaction_rating || 0),
-            pilot_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, departureTarget.vertiportId)]?.pilot_rating || 0),
             comfort_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, departureTarget.vertiportId)]?.comfort_rating || 0),
           }
         : buildEmptyReviewDraft(),
       arrival: arrivalTarget
         ? {
             satisfaction_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, arrivalTarget.vertiportId)]?.satisfaction_rating || 0),
-            pilot_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, arrivalTarget.vertiportId)]?.pilot_rating || 0),
             comfort_rating: Number(userFlightReviews[getReviewKey(flight.flightNo, arrivalTarget.vertiportId)]?.comfort_rating || 0),
           }
         : buildEmptyReviewDraft(),
@@ -407,7 +505,7 @@ const PassengerPage = () => {
       REVIEW_QUESTIONS.some((question) => !reviewDraft[target.role]?.[question.key])
     ));
     if (missingSection) {
-      setReviewError('Please rate all three questions for both departure and arrival before saving.');
+      setReviewError('Please rate both questions for departure and arrival before saving.');
       return;
     }
 
@@ -419,7 +517,6 @@ const PassengerPage = () => {
           vertiport_id: target.vertiportId,
           flight_no: reviewFlight.flightNo,
           satisfaction_rating: reviewDraft[target.role].satisfaction_rating,
-          pilot_rating: reviewDraft[target.role].pilot_rating,
           comfort_rating: reviewDraft[target.role].comfort_rating,
         })));
         setReviewRefreshKey((prev) => prev + 1);
@@ -435,7 +532,6 @@ const PassengerPage = () => {
             vertiport_id: target.vertiportId,
             flight_no: reviewFlight.flightNo,
             satisfaction_rating: reviewDraft[target.role].satisfaction_rating,
-            pilot_rating: reviewDraft[target.role].pilot_rating,
             comfort_rating: reviewDraft[target.role].comfort_rating,
             overall_rating: calculateOverallRating(reviewDraft[target.role]),
             created_at: existing?.created_at || new Date().toISOString(),
@@ -548,7 +644,7 @@ const PassengerPage = () => {
               )}
               value="favorites"
             />
-            <Tab icon={<HistoryIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Past Flights" value="history" />
+            <Tab icon={<HistoryIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Flights" value="history" />
           </Tabs>
         </Paper>
 
@@ -572,6 +668,8 @@ const PassengerPage = () => {
                 onRouteCalculated={setRoute}
                 onClearRoute={() => setRoute(null)}
                 onFlightBooked={handleFlightBooked}
+                bookingRefreshKey={bookingRefreshKey}
+                historyStorageKey={flightHistoryStorageKey}
               />
             </Box>
           </Box>
@@ -594,8 +692,11 @@ const PassengerPage = () => {
           <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
             <Box sx={{ pointerEvents: 'auto', display: 'inline-block' }}>
               <PastFlightsSidebar
-                flightHistory={flightHistory}
+                upcomingFlights={upcomingFlights}
+                pastFlights={pastFlights}
                 onClear={handleClearFlightHistory}
+                onCancelUpcoming={handleCancelUpcomingFlight}
+                cancellingFlightKey={cancellingFlightKey}
                 onReview={handleOpenReview}
                 reviewedFlights={userFlightReviews}
                 vertiports={vertiports}
@@ -726,7 +827,7 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
   </Paper>
 );
 
-const PastFlightsSidebar = ({ flightHistory, onClear, onReview, reviewedFlights, vertiports }) => (
+const PastFlightsSidebar = ({ upcomingFlights, pastFlights, onClear, onCancelUpcoming, cancellingFlightKey, onReview, reviewedFlights, vertiports }) => (
   <Paper
     sx={{
       position: 'absolute',
@@ -739,15 +840,17 @@ const PastFlightsSidebar = ({ flightHistory, onClear, onReview, reviewedFlights,
       border: '1px solid rgba(255,255,255,0.07)',
       borderRadius: '14px',
       maxHeight: 'calc(100vh - 180px)',
+      overflowX: 'hidden',
       overflowY: 'auto',
+      ...sidebarScrollSx,
     }}
   >
     <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 1 }}>
       <HistoryIcon sx={{ fontSize: 16, color: '#e17b8f' }} />
       <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-        Past Flights
+        Flight History
       </Typography>
-      {flightHistory.length > 0 && (
+      {pastFlights.length > 0 && (
         <IconButton
           size="small"
           onClick={onClear}
@@ -758,9 +861,57 @@ const PastFlightsSidebar = ({ flightHistory, onClear, onReview, reviewedFlights,
       )}
     </Box>
     <Box sx={{ p: 2 }}>
-      {flightHistory.length === 0 ? (
+      {!!upcomingFlights.length && (
+        <Box sx={{ mb: pastFlights.length ? 2.2 : 0 }}>
+          <Typography sx={{ fontSize: '0.64rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', mb: 0.8 }}>
+            Upcoming Flights
+          </Typography>
+          {upcomingFlights.map((flight) => {
+            const schedule = parseFlightSchedule(flight);
+            const flightKey = `${flight.flightNo}:${flight.departure_date}:${flight.departure_time}`;
+            return (
+              <Box key={`upcoming-${flight.flightNo}`} sx={{ mb: 1.2, p: 1.5, borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
+                  <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#60a5fa' }}>{flight.flightNo}</Typography>
+                  <Typography sx={{ fontSize: '0.65rem', color: '#475569' }}>Gate {flight.gate}</Typography>
+                </Box>
+                <Typography sx={{ fontSize: '0.72rem', color: '#e2e8f0', fontWeight: 600 }} noWrap>
+                  {flight.from} to {flight.to}
+                </Typography>
+                <Typography sx={{ fontSize: '0.65rem', color: '#64748b', mt: 0.3 }}>
+                  {flight.distance_km} km - {flight.duration_min} min - TL {flight.price_tl}
+                </Typography>
+                <Typography sx={{ fontSize: '0.64rem', color: '#cbd5e1', mt: 0.5 }}>
+                  Scheduled: {schedule ? schedule.toLocaleString() : `${flight.departure_date} ${flight.departure_time}`}
+                </Typography>
+                <Typography sx={{ fontSize: '0.62rem', color: '#475569', mt: 0.7 }}>
+                  This booking will move to past flights after its departure time.
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                  <Button
+                    size="small"
+                    onClick={() => onCancelUpcoming(flight)}
+                    disabled={cancellingFlightKey === flightKey}
+                    sx={{ color: '#fca5a5', background: 'rgba(127,29,29,0.16)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: '8px', textTransform: 'none', px: 1.4 }}
+                  >
+                    {cancellingFlightKey === flightKey ? 'Cancelling...' : 'Cancel'}
+                  </Button>
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
+      {!!pastFlights.length && (
+        <Typography sx={{ fontSize: '0.64rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', mb: 0.8 }}>
+          Past Flights
+        </Typography>
+      )}
+
+      {upcomingFlights.length === 0 && pastFlights.length === 0 ? (
         <Typography sx={{ fontSize: '0.78rem', color: '#475569', textAlign: 'center', mt: 3 }}>No flights yet.</Typography>
-      ) : flightHistory.map((flight, index) => {
+      ) : pastFlights.map((flight, index) => {
         const targets = resolveFlightReviewTargets(flight, vertiports);
         const canReview = targets.length > 0;
         const departureTarget = targets.find((target) => target.role === 'departure');
@@ -769,7 +920,7 @@ const PastFlightsSidebar = ({ flightHistory, onClear, onReview, reviewedFlights,
         const arrivalReview = arrivalTarget ? reviewedFlights[getReviewKey(flight.flightNo, arrivalTarget.vertiportId)] : null;
         const hasSavedReview = Boolean(departureReview || arrivalReview);
         return (
-          <Box key={index} sx={{ mb: 1.2, p: 1.5, borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <Box key={`past-${flight.flightNo}-${index}`} sx={{ mb: 1.2, p: 1.5, borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
               <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#e17b8f' }}>{flight.flightNo}</Typography>
               <Typography sx={{ fontSize: '0.65rem', color: '#475569' }}>Gate {flight.gate}</Typography>
@@ -787,30 +938,24 @@ const PastFlightsSidebar = ({ flightHistory, onClear, onReview, reviewedFlights,
                 Degerlendir
               </Typography>
               {hasSavedReview ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.45 }}>
-                    {departureTarget && (
-                      <FlightReviewStatusRow
-                        label="Departure"
-                        vertiportName={departureTarget.name}
-                        review={departureReview}
-                      />
-                    )}
-                    {arrivalTarget && (
-                      <FlightReviewStatusRow
-                        label="Arrival"
-                        vertiportName={arrivalTarget.name}
-                        review={arrivalReview}
-                      />
-                    )}
-                  </Box>
-                  <Button
-                    size="small"
-                    onClick={() => onReview(flight)}
-                    sx={{ color: '#f8fafc', background: 'rgba(225,123,143,0.16)', borderRadius: '8px', textTransform: 'none', px: 1.3 }}
-                  >
-                    Edit
-                  </Button>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.45 }}>
+                  {departureTarget && (
+                    <FlightReviewStatusRow
+                      label="Departure"
+                      vertiportName={departureTarget.name}
+                      review={departureReview}
+                    />
+                  )}
+                  {arrivalTarget && (
+                    <FlightReviewStatusRow
+                      label="Arrival"
+                      vertiportName={arrivalTarget.name}
+                      review={arrivalReview}
+                    />
+                  )}
+                  <Typography sx={{ fontSize: '0.62rem', color: '#475569', mt: 0.2 }}>
+                    Review already submitted. It cannot be edited.
+                  </Typography>
                 </Box>
               ) : (
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>

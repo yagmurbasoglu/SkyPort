@@ -108,6 +108,11 @@ class AnalysisHistoryResponse(BaseModel):
     items: list[AnalysisHistoryItem]
 
 
+class AnalysisHistoryDeleteResponse(BaseModel):
+    analysis_id: int
+    message: str
+
+
 class AnalysisExportResponse(BaseModel):
     report_id: int | None = None
     analysis_id: int

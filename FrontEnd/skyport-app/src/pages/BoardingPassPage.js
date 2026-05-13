@@ -15,6 +15,9 @@ const BoardingPassPage = () => {
   const duration = searchParams.get('duration') || '-';
   const price = searchParams.get('price') || '-';
   const issuedAt = searchParams.get('issued_at') || 'Unknown';
+  const departureDate = searchParams.get('departure_date') || '-';
+  const departureTime = searchParams.get('departure_time') || '-';
+  const passengers = searchParams.get('passengers') || '1';
 
   return (
     <Box
@@ -70,10 +73,17 @@ const BoardingPassPage = () => {
             <MetricCard label="Price" value={`₺${price}`} />
           </Box>
 
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.2, mt: 1.2 }}>
+            <MetricCard label="Date" value={departureDate} />
+            <MetricCard label="Time" value={departureTime} />
+            <MetricCard label="Passengers" value={passengers} />
+            <MetricCard label="Booking Rule" value="Max 2 pax" />
+          </Box>
+
           <Box sx={{ mt: 2.2, display: 'flex', alignItems: 'center', gap: 1.2, p: 1.3, borderRadius: '12px', bgcolor: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.2)' }}>
             <WorkspacePremiumIcon sx={{ color: '#4ade80', fontSize: 18 }} />
             <Typography sx={{ color: '#86efac', fontSize: '0.76rem', fontWeight: 700 }}>
-              Verified live passenger card
+              Verified live passenger card • passenger limit is 2
             </Typography>
           </Box>
         </Box>

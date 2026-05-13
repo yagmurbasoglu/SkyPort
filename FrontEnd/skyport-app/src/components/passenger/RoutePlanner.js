@@ -1,9 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import {
   Box, Paper, Typography, Button, Divider, Autocomplete,
-  TextField, CircularProgress, Alert, Chip, Modal, Fade, Backdrop, IconButton
+  TextField, CircularProgress, Alert, Chip, Modal, Fade, Backdrop, LinearProgress, MenuItem
 } from '@mui/material';
 import FlightIcon from '@mui/icons-material/Flight';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
@@ -27,7 +27,7 @@ const resolvePublicAppBaseUrl = () => {
   return window.location.origin.replace(/\/+$/, '');
 };
 
-const buildBoardingPassUrl = ({ flightNo, gate, route, fromName, toName, issuedAt }) => {
+const buildBoardingPassUrl = ({ flightNo, gate, route, fromName, toName, issuedAt, departureDate, departureTime, passengerCount }) => {
   const params = new URLSearchParams({
     flight: flightNo,
     gate,
@@ -37,8 +37,41 @@ const buildBoardingPassUrl = ({ flightNo, gate, route, fromName, toName, issuedA
     duration: String(route?.duration_min ?? ''),
     price: String(route?.price_tl ?? ''),
     issued_at: issuedAt,
+    departure_date: departureDate || '',
+    departure_time: departureTime || '',
+    passengers: String(passengerCount ?? 1),
   });
   return `${resolvePublicAppBaseUrl()}/boarding-pass?${params.toString()}`;
+};
+
+const SLOT_INTERVAL_MIN = 30;
+const MAX_PASSENGERS = 2;
+const OPERATION_START_HOUR = 9;
+const OPERATION_END_HOUR = 21;
+
+const toDateInputValue = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const buildDailySlots = () => {
+  const slots = [];
+  for (let hour = OPERATION_START_HOUR; hour <= OPERATION_END_HOUR; hour += 1) {
+    for (let minute = 0; minute < 60; minute += SLOT_INTERVAL_MIN) {
+      if (hour === OPERATION_END_HOUR && minute > 0) continue;
+      slots.push(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
+    }
+  }
+  return slots;
+};
+
+const parseSlotDate = (dateValue, timeValue) => {
+  if (!dateValue || !timeValue) return null;
+  const [year, month, day] = dateValue.split('-').map(Number);
+  const [hours, minutes] = timeValue.split(':').map(Number);
+  return new Date(year, month - 1, day, hours, minutes, 0, 0);
 };
 
 const getNextFlightNo = () => {
@@ -49,11 +82,28 @@ const getNextFlightNo = () => {
 };
 
 const randomGate = () => GATES[Math.floor(Math.random() * GATES.length)];
+const isDbVertiportId = (id) => Number.isInteger(id);
+const readFlightHistory = (storageKey) => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
 
-const saveFlightHistory = (entry) => {
-  const history = JSON.parse(localStorage.getItem('skyport_flight_history') || '[]');
+const hasLocalSlotConflict = (history, { fromVertiportId, departureDate, departureTime }) => (
+  history.some((flight) => (
+    String(flight.from_vertiport_id ?? '') === String(fromVertiportId ?? '')
+    && String(flight.departure_date ?? '') === String(departureDate ?? '')
+    && String(flight.departure_time ?? '') === String(departureTime ?? '')
+  ))
+);
+
+const saveFlightHistory = (storageKey, entry) => {
+  const history = readFlightHistory(storageKey);
   history.unshift(entry); // newest first
-  localStorage.setItem('skyport_flight_history', JSON.stringify(history.slice(0, 20)));
+  localStorage.setItem(storageKey, JSON.stringify(history.slice(0, 20)));
 };
 
 const autoSx = {
@@ -66,10 +116,17 @@ const autoSx = {
     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
     '&.Mui-focused fieldset': { borderColor: '#e17b8f' },
   },
-  '& .MuiInputLabel-root': { color: '#475569', fontFamily: 'Inter', fontSize: '0.82rem' },
+  '& .MuiInputLabel-root': { color: '#cbd5e1', fontFamily: 'Inter', fontSize: '0.82rem' },
   '& .MuiInputBase-input': { color: '#e2e8f0', fontFamily: 'Inter', fontSize: '0.82rem' },
+  '& .MuiInputBase-input::-webkit-calendar-picker-indicator': {
+    filter: 'invert(1) brightness(1.35)',
+    opacity: 0.92,
+    cursor: 'pointer',
+  },
   '& .MuiAutocomplete-popupIndicator': { color: '#475569' },
   '& .MuiAutocomplete-clearIndicator': { color: '#475569' },
+  '& .MuiSvgIcon-root': { color: '#cbd5e1' },
+  '& .MuiSelect-icon': { color: '#cbd5e1' },
 };
 
 const scrollSx = {
@@ -148,17 +205,95 @@ const obstacleDataCopy = (route) => {
   };
 };
 
-const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlightBooked }) => {
+const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlightBooked, bookingRefreshKey = 0, historyStorageKey }) => {
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
   const [route, setRoute] = useState(null);
   const [error, setError] = useState('');
   const [showBoardingPass, setShowBoardingPass] = useState(false);
   const [flightNo, setFlightNo] = useState('');
   const [gate, setGate] = useState('');
   const [boardingPassUrl, setBoardingPassUrl] = useState('');
+  const [departureDate, setDepartureDate] = useState(() => toDateInputValue(new Date()));
+  const [departureTime, setDepartureTime] = useState('');
+  const [passengerCount, setPassengerCount] = useState(1);
+  const [occupiedSlots, setOccupiedSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
   const ticketRef = useRef(null);
+
+  useEffect(() => {
+    if (!departureDate || !isDbVertiportId(from?.id)) {
+      setOccupiedSlots([]);
+      setSlotsLoading(false);
+      return undefined;
+    }
+
+    let active = true;
+    setSlotsLoading(true);
+    axios.get('/api/bookings/slots', {
+      params: {
+        from_vertiport_id: from.id,
+        departure_date: departureDate,
+      },
+    }).then((response) => {
+      if (active) {
+        setOccupiedSlots(Array.isArray(response.data?.booked_slots) ? response.data.booked_slots : []);
+      }
+    }).catch(() => {
+      if (active) {
+        setOccupiedSlots([]);
+      }
+    }).finally(() => {
+      if (active) {
+        setSlotsLoading(false);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [bookingRefreshKey, departureDate, from?.id]);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingSeconds(0);
+      return undefined;
+    }
+    const interval = window.setInterval(() => {
+      setLoadingSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [loading]);
+
+  const availableSlots = useMemo(() => {
+    const allSlots = buildDailySlots();
+    if (!departureDate) return allSlots;
+
+    const now = new Date();
+    const today = toDateInputValue(now);
+    let filteredSlots = allSlots;
+    if (departureDate === today) {
+      filteredSlots = allSlots.filter((slot) => {
+        const slotDate = parseSlotDate(departureDate, slot);
+        return slotDate && slotDate.getTime() > now.getTime() + 15 * 60 * 1000;
+      });
+    }
+
+    return filteredSlots.filter((slot) => !occupiedSlots.includes(slot));
+  }, [departureDate, occupiedSlots]);
+
+  useEffect(() => {
+    if (!availableSlots.length) {
+      setDepartureTime('');
+      return;
+    }
+    if (!availableSlots.includes(departureTime)) {
+      setDepartureTime(availableSlots[0]);
+    }
+  }, [availableSlots, departureTime]);
 
   const handleSwap = () => {
     setFrom(to);
@@ -196,10 +331,57 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
     }
   };
 
-  const handleBookFlight = () => {
+  const handleBookFlight = async () => {
+    if (!route || !departureDate || !departureTime || bookingSubmitting) {
+      setError('Select an available departure date and time before booking.');
+      return;
+    }
+    const fromVertiportId = route?.fromVertiport?.id ?? from?.id ?? null;
+    const toVertiportId = route?.toVertiport?.id ?? to?.id ?? null;
+    const localHistory = readFlightHistory(historyStorageKey);
+    if (hasLocalSlotConflict(localHistory, { fromVertiportId, departureDate, departureTime })) {
+      setError('You already created a booking for this departure slot.');
+      return;
+    }
     const fn = getNextFlightNo();
     const g = randomGate();
     const issuedAt = new Date().toLocaleString('tr-TR');
+    let bookingId = null;
+    setBookingSubmitting(true);
+    if (isDbVertiportId(fromVertiportId)) {
+      try {
+        const bookingResponse = await axios.post('/api/bookings', {
+          route_id: route?.route_id ?? null,
+          from_vertiport_id: fromVertiportId,
+          to_vertiport_id: isDbVertiportId(toVertiportId) ? toVertiportId : null,
+          flight_no: fn,
+          gate: g,
+          departure_date: departureDate,
+          departure_time: departureTime,
+          passenger_count: passengerCount,
+        });
+        bookingId = bookingResponse?.data?.id ?? null;
+        setOccupiedSlots((prev) => (
+          prev.includes(departureTime)
+            ? prev
+            : [...prev, departureTime].sort((left, right) => left.localeCompare(right))
+        ));
+      } catch (err) {
+        const detail = err.response?.data?.detail || err.response?.data?.message || err.message;
+        setError(detail);
+        if (err.response?.status === 409) {
+          setOccupiedSlots((prev) => (
+            prev.includes(departureTime)
+              ? prev
+              : [...prev, departureTime].sort((left, right) => left.localeCompare(right))
+          ));
+          setDepartureTime('');
+        }
+        return;
+      } finally {
+        setBookingSubmitting(false);
+      }
+    }
     setFlightNo(fn);
     setGate(g);
     const livePassUrl = buildBoardingPassUrl({
@@ -209,24 +391,32 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
       fromName: route?.fromVertiport?.name || from?.name || 'Origin',
       toName: route?.toVertiport?.name || to?.name || 'Destination',
       issuedAt,
+      departureDate,
+      departureTime,
+      passengerCount,
     });
     setBoardingPassUrl(livePassUrl);
     const entry = {
+      booking_id: bookingId,
       flightNo: fn,
       gate: g,
       from: route?.fromVertiport?.name || from?.name || 'Origin',
       to: route?.toVertiport?.name || to?.name || 'Destination',
-      from_vertiport_id: route?.fromVertiport?.id ?? from?.id ?? null,
-      to_vertiport_id: route?.toVertiport?.id ?? to?.id ?? null,
+      from_vertiport_id: fromVertiportId,
+      to_vertiport_id: toVertiportId,
       distance_km: route?.distance_km,
       duration_min: route?.duration_min,
       price_tl: route?.price_tl,
       date: issuedAt,
+      departure_date: departureDate,
+      departure_time: departureTime,
+      passenger_count: passengerCount,
       boarding_pass_url: livePassUrl,
     };
-    saveFlightHistory(entry);
+    saveFlightHistory(historyStorageKey, entry);
     onFlightBooked?.(entry);
     setShowBoardingPass(true);
+    setBookingSubmitting(false);
   };
 
   const handleClear = () => {
@@ -247,6 +437,9 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
     fromName,
     toName,
     issuedAt: new Date().toLocaleString('tr-TR'),
+    departureDate,
+    departureTime,
+    passengerCount,
   }));
   const qrUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}&bgcolor=0f172a&color=e17b8f&margin=8`;
 
@@ -259,12 +452,14 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
         backgroundColor: '#0f172a',
       });
       const imgData = canvas.toDataURL('image/png');
+      const pdfWidth = 85;
+      const pdfHeight = Math.max(140, (canvas.height * pdfWidth) / canvas.width);
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
-        format: [85, 140], // Custom ticket size
+        format: [pdfWidth, pdfHeight],
       });
-      pdf.addImage(imgData, 'PNG', 0, 0, 85, 140);
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`SkyPort-${flightNo}-Ticket.pdf`);
     } catch (err) {
       console.error('PDF export failed:', err);
@@ -471,6 +666,58 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
               </Box>
             )}
 
+            {route.is_safe && (
+              <Box sx={{ mt: 1.6, background: 'rgba(255,255,255,0.04)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)', p: 1.2 }}>
+                <Typography sx={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 1 }}>
+                  Flight Booking Details
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Departure Date"
+                  type="date"
+                  size="small"
+                  value={departureDate}
+                  onChange={(event) => setDepartureDate(event.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{ min: toDateInputValue(new Date()) }}
+                  sx={{ ...autoSx, mb: 1.1 }}
+                />
+                <TextField
+                  fullWidth
+                  select
+                  label="Available Time Slot"
+                  size="small"
+                  value={departureTime}
+                  onChange={(event) => setDepartureTime(event.target.value)}
+                  disabled={slotsLoading || !availableSlots.length}
+                  helperText={
+                    slotsLoading
+                      ? 'Checking live slot availability...'
+                      : (availableSlots.length ? 'Booked slots are automatically hidden.' : 'No slots left for the selected date.')
+                  }
+                  sx={{ ...autoSx, mb: 1.1 }}
+                >
+                  {availableSlots.map((slot) => (
+                    <MenuItem key={slot} value={slot}>{slot}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  fullWidth
+                  select
+                  label="Passenger Count"
+                  size="small"
+                  value={passengerCount}
+                  onChange={(event) => setPassengerCount(Number(event.target.value))}
+                  helperText="Passenger count is limited to 2 per booking."
+                  sx={autoSx}
+                >
+                  {[1, 2].map((count) => (
+                    <MenuItem key={count} value={count}>{count}</MenuItem>
+                  ))}
+                </TextField>
+              </Box>
+            )}
+
             {!route.is_safe && (
               <Button
                 fullWidth
@@ -489,9 +736,10 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
             )}
 
             {route.is_safe && (
-              <Button
-                fullWidth
-                onClick={handleBookFlight}
+                <Button
+                  fullWidth
+                  onClick={handleBookFlight}
+                  disabled={!departureDate || !departureTime || slotsLoading || bookingSubmitting}
                 sx={{
                   mt: 2,
                   textTransform: 'uppercase',
@@ -507,7 +755,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
                   }
                 }}
               >
-                Book Flight
+                {bookingSubmitting ? 'Booking...' : 'Book Flight'}
               </Button>
             )}
 
@@ -527,6 +775,38 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
       </Box>
 
       {/* ── Boarding Pass Modal ── */}
+      <Modal open={loading} closeAfterTransition BackdropComponent={Backdrop} BackdropProps={{ timeout: 250, sx: { backdropFilter: 'blur(6px)', background: 'rgba(2,6,23,0.7)' } }}>
+        <Fade in={loading}>
+          <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 'min(90vw, 360px)', outline: 'none' }}>
+            <Paper sx={{ background: 'rgba(2, 6, 23, 0.96)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '18px', boxShadow: '0 28px 80px rgba(0,0,0,0.55)', p: 2.4 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1 }}>
+                <CircularProgress size={22} sx={{ color: '#e17b8f' }} />
+                <Box>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.92rem' }}>
+                    Calculating Safe Route
+                  </Typography>
+                  <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem', mt: 0.25 }}>
+                    Airspace, weather, and obstacle checks are running now.
+                  </Typography>
+                </Box>
+              </Box>
+              <LinearProgress
+                sx={{
+                  mt: 1.6,
+                  height: 7,
+                  borderRadius: '999px',
+                  bgcolor: 'rgba(255,255,255,0.08)',
+                  '& .MuiLinearProgress-bar': { background: 'linear-gradient(90deg,#e17b8f,#60a5fa)' },
+                }}
+              />
+              <Typography sx={{ color: '#64748b', fontSize: '0.68rem', mt: 1.1 }}>
+                Elapsed time: {loadingSeconds}s
+              </Typography>
+            </Paper>
+          </Box>
+        </Fade>
+      </Modal>
+
       <Modal open={showBoardingPass} onClose={() => setShowBoardingPass(false)} closeAfterTransition BackdropComponent={Backdrop} BackdropProps={{ timeout: 500, sx: { backdropFilter: 'blur(8px)' } }}>
         <Fade in={showBoardingPass}>
           <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', outline: 'none' }}>
@@ -554,17 +834,23 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
               <Divider sx={{ mx: 3, mt: 2, borderColor: 'rgba(255,255,255,0.06)', borderStyle: 'dashed' }} />
 
               {/* Flight details row */}
-              <Box sx={{ px: 3, py: 1.5, display: 'flex', justifyContent: 'space-between' }}>
-                <Box><Typography sx={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase' }}>Flight</Typography><Typography sx={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>{flightNo}</Typography></Box>
-                <Box><Typography sx={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase' }}>Gate</Typography><Typography sx={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>{gate}</Typography></Box>
-                <Box><Typography sx={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase' }}>Duration</Typography><Typography sx={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>{route?.duration_min ?? '–'} min</Typography></Box>
-                <Box><Typography sx={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase' }}>Price</Typography><Typography sx={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>₺{route?.price_tl ?? '–'}</Typography></Box>
+              <Box sx={{ px: 3, py: 1.5, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.1 }}>
+                <TicketMetric label="Flight" value={flightNo} />
+                <TicketMetric label="Gate" value={gate} />
+                <TicketMetric label="Departure Date" value={departureDate || '-'} />
+                <TicketMetric label="Departure Time" value={departureTime || '-'} />
+                <TicketMetric label="Passengers" value={String(passengerCount)} />
+                <TicketMetric label="Duration" value={`${route?.duration_min ?? '-'} min`} />
+                <TicketMetric label="Price" value={`₺${route?.price_tl ?? '-'}`} />
+                <TicketMetric label="Booking Rule" value={`Max ${MAX_PASSENGERS} pax`} />
               </Box>
 
               <Box sx={{ px: 3, pb: 1.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, background: 'rgba(34,197,94,0.1)', p: 1.2, borderRadius: '8px', border: '1px solid rgba(34,197,94,0.2)' }}>
                   <WorkspacePremiumIcon sx={{ color: '#4ade80', fontSize: 16 }} />
-                  <Typography sx={{ color: '#4ade80', fontSize: '0.68rem', fontWeight: 600 }}>Zero Emission Flight · CO₂ Saved</Typography>
+                  <Typography sx={{ color: '#4ade80', fontSize: '0.68rem', fontWeight: 600 }}>
+                    Zero emission flight · passenger count is limited to 2.
+                  </Typography>
                 </Box>
               </Box>
 
@@ -586,28 +872,72 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
             </Box>
 
             {/* Actions (Not part of the printed ticket) */}
-            <Box sx={{ width: 320, maxWidth: '100%', mx: 'auto', mt: 1.5, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
+            <Box
+              sx={{
+                width: 360,
+                maxWidth: '100%',
+                mx: 'auto',
+                mt: 1.5,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                gap: 1,
+                alignItems: 'stretch',
+              }}
+            >
               <Button
                 variant="contained"
                 startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
                 onClick={handleDownloadPDF}
-                sx={{ minHeight: 56, background: 'linear-gradient(135deg,#e17b8f,#be123c)', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', borderRadius: '10px', py: 1.2 }}
+                sx={{
+                  minHeight: 72,
+                  background: 'linear-gradient(135deg,#e17b8f,#be123c)',
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.76rem',
+                  borderRadius: '10px',
+                  py: 1.1,
+                  px: 1.2,
+                  textAlign: 'center',
+                  lineHeight: 1.3,
+                }}
               >
-                Download PDF Ticket
+                Download Ticket
               </Button>
               <Button
                 component="a"
                 href={boardingPassUrl}
                 target="_blank"
                 rel="noreferrer"
-                sx={{ minHeight: 56, bgcolor: 'rgba(255,255,255,0.06)', color: '#fff', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', borderRadius: '10px', px: 1.6 }}
+                sx={{
+                  minHeight: 72,
+                  bgcolor: 'rgba(255,255,255,0.06)',
+                  color: '#fff',
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.76rem',
+                  borderRadius: '10px',
+                  px: 1.2,
+                  textAlign: 'center',
+                  lineHeight: 1.3,
+                }}
               >
                 Open Live Pass
               </Button>
               <Button
                 onClick={() => setShowBoardingPass(false)}
                 startIcon={<CloseIcon fontSize="small" />}
-                sx={{ minHeight: 56, bgcolor: 'rgba(255,255,255,0.05)', color: '#fff', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', borderRadius: '10px', px: 1.4 }}
+                sx={{
+                  minHeight: 72,
+                  bgcolor: 'rgba(255,255,255,0.05)',
+                  color: '#fff',
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.76rem',
+                  borderRadius: '10px',
+                  px: 1.2,
+                  textAlign: 'center',
+                  lineHeight: 1.3,
+                }}
               >
                 Close
               </Button>
@@ -628,6 +958,17 @@ const StatBox = ({ icon, label, value }) => (
     <Box sx={{ display: 'flex', justifyContent: 'center', mb: 0.5 }}>{icon}</Box>
     <Typography sx={{ fontSize: '0.6rem', color: '#475569', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{label}</Typography>
     <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0', mt: 0.2 }}>{value}</Typography>
+  </Box>
+);
+
+const TicketMetric = ({ label, value }) => (
+  <Box sx={{ background: 'rgba(255,255,255,0.03)', borderRadius: '10px', p: 0.9, border: '1px solid rgba(255,255,255,0.05)' }}>
+    <Typography sx={{ fontSize: '0.58rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      {label}
+    </Typography>
+    <Typography sx={{ fontSize: '0.8rem', color: '#e2e8f0', fontWeight: 700, mt: 0.25 }}>
+      {value}
+    </Typography>
   </Box>
 );
 

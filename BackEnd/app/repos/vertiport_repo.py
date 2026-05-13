@@ -42,7 +42,7 @@ def list_active_vertiports(
         LEFT JOIN (
             SELECT
                 vertiport_id,
-                ROUND(AVG((satisfaction_rating + pilot_rating + comfort_rating) / 3.0)::numeric, 2) AS average_rating,
+                ROUND(AVG((satisfaction_rating + comfort_rating) / 2.0)::numeric, 2) AS average_rating,
                 COUNT(*)::integer AS review_count
             FROM public.vertiport_reviews
             GROUP BY vertiport_id

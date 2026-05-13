@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.geodata import router as geodata_router
 from app.api.health import router as health_router
 from app.api.routes.analysis import router as analysis_router
+from app.api.routes.bookings import router as bookings_router
 from app.api.routes.geodata import router as geodata_tools_router
 from app.api.routes.favorites import router as favorites_router
 from app.api.routes.route import router as route_router
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(geodata_tools_router, prefix="/api/geodata", tags=["geodata"])
     app.include_router(analysis_router, prefix="/api/analysis", tags=["analysis"])
+    app.include_router(bookings_router, prefix="/api/bookings", tags=["bookings"])
     app.include_router(route_router, prefix="/api/route", tags=["route"])
     app.include_router(vertiports_router, prefix="/api/vertiports", tags=["vertiports"])
     app.include_router(vertiport_reviews_router, prefix="/api/vertiport-reviews", tags=["vertiport-reviews"])

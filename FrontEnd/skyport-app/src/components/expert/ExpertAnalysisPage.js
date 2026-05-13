@@ -127,7 +127,15 @@ const fieldSx = {
     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.24)' },
     '&.Mui-focused fieldset': { borderColor: '#b65f70' },
   },
-  '& .MuiInputLabel-root': { color: '#94a3b8' },
+  '& .MuiInputLabel-root': { color: '#cbd5e1' },
+  '& .MuiInputBase-input': { color: '#f8fafc' },
+  '& .MuiInputBase-input::-webkit-calendar-picker-indicator': {
+    filter: 'invert(1) brightness(1.35)',
+    opacity: 0.92,
+    cursor: 'pointer',
+  },
+  '& .MuiSvgIcon-root': { color: '#cbd5e1' },
+  '& .MuiSelect-icon': { color: '#cbd5e1' },
 };
 
 const statusColor = (status) => {
@@ -1668,6 +1676,22 @@ const ExpertAnalysisPage = () => {
     }
   }, [loadExportedReports]);
 
+  const deleteSavedAnalysis = useCallback(async (historyItem) => {
+    if (!historyItem?.analysis_id) return;
+    setBusy('history-delete');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const response = await axios.delete(`/api/analysis/history/${historyItem.analysis_id}`);
+      await loadSavedHistory();
+      setSuccessMessage(response.data?.message || 'Saved analysis removed from profile.');
+    } catch (err) {
+      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+    } finally {
+      setBusy('');
+    }
+  }, [loadSavedHistory]);
+
   const loadSavedAnalysis = useCallback(async (historyItem) => {
     if (!historyItem?.analysis_id) return;
     setBusy('history');
@@ -1724,7 +1748,17 @@ const ExpertAnalysisPage = () => {
     setError('');
     setRouteResult(null);
     setRouteLayer(null);
+    updateProgress({
+      phase: 'Route Safety',
+      percent: 18,
+      message: 'Booting route safety scan and validating flight corridor.',
+    });
     try {
+      updateProgress({
+        phase: 'Route Safety',
+        percent: 42,
+        message: 'Checking no-fly zones, obstacle clearance, and wind limits.',
+      });
       const response = await axios.post('/api/route', {
         from_point: {
           lat: routePoints.from.lat,
@@ -1742,11 +1776,22 @@ const ExpertAnalysisPage = () => {
           max_wind_kmh: Number(routeForm.windLimitKmh || EXPERT_ROUTE_WIND_LIMIT),
         },
       });
+      updateProgress({
+        phase: 'Route Safety',
+        percent: 91,
+        message: 'Safe route computed. Rendering route geometry and telemetry.',
+      });
       setRouteResult(response.data);
       setRouteLayer(response.data);
     } catch (err) {
       setError(err.response?.data?.message || err.response?.data?.detail || err.message);
     } finally {
+      setJobProgress({
+        open: false,
+        phase: '',
+        percent: 0,
+        message: '',
+      });
       setBusy('');
     }
   };
@@ -2478,14 +2523,27 @@ const ExpertAnalysisPage = () => {
                           {new Date(item.saved_at || item.created_at).toLocaleString()} · best {item.suitability_score?.toFixed?.(1) ?? item.suitability_score ?? 'n/a'}
                         </Typography>
                       </Box>
-                      <Button
-                        size="small"
-                        variant="text"
-                        onClick={() => loadSavedAnalysis(item)}
-                        sx={{ color: '#60a5fa', textTransform: 'none', minWidth: 0 }}
-                      >
-                        Reload
-                      </Button>
+                      <Stack direction="row" spacing={0.5}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => loadSavedAnalysis(item)}
+                          disabled={busy === 'history-delete' || busy === 'history'}
+                          sx={{ color: '#60a5fa', textTransform: 'none', minWidth: 0 }}
+                        >
+                          Reload
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="text"
+                          startIcon={<DeleteOutlineIcon sx={{ fontSize: 15 }} />}
+                          onClick={() => deleteSavedAnalysis(item)}
+                          disabled={busy === 'history-delete' || busy === 'history'}
+                          sx={{ color: '#fca5a5', textTransform: 'none', minWidth: 0 }}
+                        >
+                          Delete
+                        </Button>
+                      </Stack>
                     </Box>
                   ))}
                 </Stack>
@@ -2733,7 +2791,7 @@ const ExpertAnalysisPage = () => {
           </Box>
         ))}
       </Paper>
-      <Modal open={jobProgress.open && (busy === 'ingest' || busy === 'analysis')} disableAutoFocus>
+      <Modal open={jobProgress.open && (busy === 'ingest' || busy === 'analysis' || busy === 'route')} disableAutoFocus>
         <Box sx={{
           position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
           width: 500, maxWidth: 'calc(100% - 32px)',

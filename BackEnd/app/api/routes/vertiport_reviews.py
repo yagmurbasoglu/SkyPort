@@ -35,7 +35,11 @@ def create_vertiport_review(
         vertiport_id=req.vertiport_id,
         flight_no=req.flight_no.strip(),
         satisfaction_rating=req.satisfaction_rating,
-        pilot_rating=req.pilot_rating,
         comfort_rating=req.comfort_rating,
     )
+    if review is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This flight has already been reviewed for the selected vertiport.",
+        )
     return VertiportReviewCreateResponse(**review, message="Review saved successfully.")

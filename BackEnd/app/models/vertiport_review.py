@@ -11,7 +11,7 @@ class VertiportReview(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "flight_no", "vertiport_id", name="uq_vertiport_reviews_user_flight_vertiport"),
         CheckConstraint("satisfaction_rating BETWEEN 1 AND 5", name="ck_vertiport_reviews_satisfaction_range"),
-        CheckConstraint("pilot_rating BETWEEN 1 AND 5", name="ck_vertiport_reviews_pilot_range"),
+        CheckConstraint("timing_rating BETWEEN 1 AND 5", name="ck_vertiport_reviews_timing_range"),
         CheckConstraint("comfort_rating BETWEEN 1 AND 5", name="ck_vertiport_reviews_comfort_range"),
     )
 
@@ -28,7 +28,7 @@ class VertiportReview(Base):
     )
     flight_no: Mapped[str] = mapped_column(String(40), nullable=False)
     satisfaction_rating: Mapped[int] = mapped_column(Integer, nullable=False)
-    pilot_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    timing_rating: Mapped[int] = mapped_column(Integer, nullable=False)
     comfort_rating: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

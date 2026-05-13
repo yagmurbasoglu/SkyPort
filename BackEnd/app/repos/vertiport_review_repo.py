@@ -8,7 +8,7 @@ from app.models.vertiport_review import VertiportReview
 
 def _review_to_dict(review: VertiportReview) -> dict[str, Any]:
     overall_rating = round(
-        (review.satisfaction_rating + review.pilot_rating + review.comfort_rating) / 3.0,
+        (review.satisfaction_rating + review.comfort_rating) / 2.0,
         2,
     )
     return {
@@ -17,7 +17,7 @@ def _review_to_dict(review: VertiportReview) -> dict[str, Any]:
         "vertiport_id": review.vertiport_id,
         "flight_no": review.flight_no,
         "satisfaction_rating": review.satisfaction_rating,
-        "pilot_rating": review.pilot_rating,
+        "timing_rating": review.timing_rating,
         "comfort_rating": review.comfort_rating,
         "overall_rating": overall_rating,
         "created_at": review.created_at,
@@ -48,9 +48,8 @@ def upsert_review(
     vertiport_id: int,
     flight_no: str,
     satisfaction_rating: int,
-    pilot_rating: int,
     comfort_rating: int,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     with SessionLocal() as db:
         stmt = select(VertiportReview).where(
             VertiportReview.user_id == user_id,
@@ -58,21 +57,17 @@ def upsert_review(
             VertiportReview.vertiport_id == vertiport_id,
         )
         review = db.execute(stmt).scalar_one_or_none()
-        if review is None:
-            review = VertiportReview(
-                user_id=user_id,
-                vertiport_id=vertiport_id,
-                flight_no=flight_no,
-                satisfaction_rating=satisfaction_rating,
-                pilot_rating=pilot_rating,
-                comfort_rating=comfort_rating,
-            )
-            db.add(review)
-        else:
-            review.vertiport_id = vertiport_id
-            review.satisfaction_rating = satisfaction_rating
-            review.pilot_rating = pilot_rating
-            review.comfort_rating = comfort_rating
+        if review is not None:
+            return None
+        review = VertiportReview(
+            user_id=user_id,
+            vertiport_id=vertiport_id,
+            flight_no=flight_no,
+            satisfaction_rating=satisfaction_rating,
+            timing_rating=comfort_rating,
+            comfort_rating=comfort_rating,
+        )
+        db.add(review)
         db.commit()
         db.refresh(review)
         return _review_to_dict(review)

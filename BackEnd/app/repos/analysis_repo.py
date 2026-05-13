@@ -234,3 +234,17 @@ def list_saved_analyses(user_id: int) -> list[dict[str, Any]]:
             .order_by(Analysis.saved_at.desc(), Analysis.created_at.desc())
         )
         return [_analysis_to_dict(row) for row in db.execute(stmt).scalars().all()]
+
+
+def delete_saved_analysis(analysis_id: int, *, user_id: int) -> dict[str, Any] | None:
+    with SessionLocal() as db:
+        analysis = db.get(Analysis, analysis_id)
+        if analysis is None or analysis.user_id != user_id or analysis.saved_at is None:
+            return None
+
+        analysis.saved_name = None
+        analysis.saved_payload = None
+        analysis.saved_at = None
+        db.commit()
+        db.refresh(analysis)
+        return _analysis_to_dict(analysis)

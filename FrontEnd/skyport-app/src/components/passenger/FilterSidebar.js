@@ -11,6 +11,26 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import { FEATURE_ICONS, FEATURE_LABELS } from '../../mock/vertiports';
 
 const FEATURE_KEYS = Object.keys(FEATURE_LABELS);
+const scrollSx = {
+  scrollbarWidth: 'thin',
+  scrollbarColor: 'rgba(148,163,184,0.58) rgba(15,23,42,0.34)',
+  '&::-webkit-scrollbar': {
+    width: 10,
+    height: 10,
+  },
+  '&::-webkit-scrollbar-track': {
+    background: 'rgba(15,23,42,0.34)',
+    borderRadius: '8px',
+  },
+  '&::-webkit-scrollbar-thumb': {
+    background: 'rgba(148,163,184,0.58)',
+    borderRadius: '8px',
+    border: '2px solid rgba(15,23,42,0.34)',
+  },
+  '&::-webkit-scrollbar-thumb:hover': {
+    background: 'rgba(203,213,225,0.72)',
+  },
+};
 
 const FilterSidebar = ({ filters, onChange, resultCount }) => {
   const handleDistanceChange = (_, value) => onChange({ ...filters, maxDistance: value });
@@ -33,7 +53,9 @@ const FilterSidebar = ({ filters, onChange, resultCount }) => {
         border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: '14px',
         maxHeight: { xs: 'calc(100vh - 96px)', md: 'calc(100vh - 180px)' },
+        overflowX: 'hidden',
         overflowY: 'auto',
+        ...scrollSx,
       }}
     >
       <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>

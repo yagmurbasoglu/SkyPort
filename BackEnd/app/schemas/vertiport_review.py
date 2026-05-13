@@ -7,7 +7,6 @@ class VertiportReviewCreateRequest(BaseModel):
     vertiport_id: int
     flight_no: str = Field(..., min_length=1, max_length=40)
     satisfaction_rating: int = Field(..., ge=1, le=5)
-    pilot_rating: int = Field(..., ge=1, le=5)
     comfort_rating: int = Field(..., ge=1, le=5)
 
 
@@ -17,7 +16,7 @@ class VertiportReviewItem(BaseModel):
     vertiport_id: int | None = None
     flight_no: str
     satisfaction_rating: int
-    pilot_rating: int
+    timing_rating: int
     comfort_rating: int
     overall_rating: float
     created_at: datetime

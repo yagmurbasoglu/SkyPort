@@ -24,6 +24,7 @@ def _analysis_to_dict(analysis: Analysis) -> dict[str, Any]:
         "saved_at": analysis.saved_at,
         "started_at": analysis.started_at,
         "completed_at": analysis.completed_at,
+        "version": analysis.version,
         "created_at": analysis.created_at,
     }
 
@@ -85,6 +86,7 @@ def create_analysis(
             status="running",
             criteria_weights=criteria_weights,
             started_at=now,
+            version=1,
         )
         db.add(analysis)
         db.commit()
@@ -104,6 +106,7 @@ def reset_analysis(analysis_id: int, *, criteria_weights: dict[str, float]) -> d
         analysis.criteria_weights = criteria_weights
         analysis.started_at = now
         analysis.completed_at = None
+        analysis.version = int(analysis.version or 1) + 1
         db.commit()
         db.refresh(analysis)
         return _analysis_to_dict(analysis)
@@ -137,6 +140,7 @@ def complete_analysis(analysis_id: int, results: list[dict[str, Any]]) -> dict[s
         )
         analysis.status = "completed"
         analysis.completed_at = now
+        analysis.version = int(analysis.version or 1) + 1
         db.commit()
         db.refresh(analysis)
         return _analysis_to_dict(analysis)
@@ -150,6 +154,7 @@ def fail_analysis(analysis_id: int) -> dict[str, Any] | None:
             return None
         analysis.status = "failed"
         analysis.completed_at = now
+        analysis.version = int(analysis.version or 1) + 1
         db.commit()
         db.refresh(analysis)
         return _analysis_to_dict(analysis)
@@ -218,6 +223,7 @@ def save_analysis(
         analysis.saved_name = saved_name
         analysis.saved_payload = saved_payload
         analysis.saved_at = now
+        analysis.version = int(analysis.version or 1) + 1
         db.commit()
         db.refresh(analysis)
         return _analysis_to_dict(analysis)
@@ -245,6 +251,7 @@ def delete_saved_analysis(analysis_id: int, *, user_id: int) -> dict[str, Any] |
         analysis.saved_name = None
         analysis.saved_payload = None
         analysis.saved_at = None
+        analysis.version = int(analysis.version or 1) + 1
         db.commit()
         db.refresh(analysis)
         return _analysis_to_dict(analysis)

@@ -68,4 +68,4 @@ def test_weather_service_flags_high_altitude_wind_risk(monkeypatch) -> None:
     assert weather["source"] == "open_meteo"
     assert weather["wind_120m_kmh"] == 44.0
     assert weather["is_safe"] is False
-    assert weather["warning"] == "Observed wind exceeds configured route safety limit."
+    assert weather["warning"] == "Observed wind reached 44.0 km/h, which exceeds the configured route safety limit of 35.0 km/h."

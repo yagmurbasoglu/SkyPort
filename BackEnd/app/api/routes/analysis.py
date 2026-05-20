@@ -10,6 +10,7 @@ from app.schemas.analysis import (
     AnalysisCompareResponse,
     AnalysisCreateRequest,
     AnalysisCreateResponse,
+    AnalysisJobControlResponse,
     AnalysisSaveRequest,
     AnalysisSaveResponse,
     AnalysisHeatmapResponse,
@@ -22,6 +23,7 @@ from app.schemas.analysis import (
     AnalysisReportDeleteResponse,
     AnalysisReportListResponse,
 )
+from app.services.app_facade import AppFacade
 from app.services.analysis_service import AnalysisService
 
 router = APIRouter()
@@ -42,8 +44,8 @@ def create_analysis(
     Start an async MCDM analysis from a completed geodata ingest job.
     Access: Experts only.
     """
-    analysis_svc = AnalysisService()
-    result = analysis_svc.start_analysis(
+    facade = AppFacade(current_user)
+    result = facade.analysis.start_analysis(
         user_id=current_user.id,
         geodata_job_id=req.geodata_job_id,
         region_name=req.region_name,
@@ -62,12 +64,31 @@ def recalculate_analysis(
     Re-run an existing analysis with updated criteria weights.
     Access: Experts only.
     """
-    result = AnalysisService().recalculate_analysis(
+    result = AppFacade(current_user).analysis.recalculate_analysis(
         user_id=current_user.id,
         analysis_id=analysis_id,
         criteria_weights=req.criteria_weights,
+        expected_version=req.expected_version,
     )
     return AnalysisCreateResponse(**result)
+
+
+@router.post("/{analysis_id}/pause", response_model=AnalysisJobControlResponse)
+def pause_analysis(
+    analysis_id: int,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisJobControlResponse:
+    result = AppFacade(current_user).analysis.pause_analysis(user_id=current_user.id, analysis_id=analysis_id)
+    return AnalysisJobControlResponse(**result)
+
+
+@router.post("/{analysis_id}/resume", response_model=AnalysisJobControlResponse)
+def resume_analysis(
+    analysis_id: int,
+    current_user: User = Depends(allow_expert),
+) -> AnalysisJobControlResponse:
+    result = AppFacade(current_user).analysis.resume_analysis(user_id=current_user.id, analysis_id=analysis_id)
+    return AnalysisJobControlResponse(**result)
 
 
 @router.get("/{analysis_id}/status", response_model=AnalysisStatusResponse)
@@ -78,7 +99,7 @@ def get_analysis_status(
     """
     Get status of an async analysis job.
     """
-    result = AnalysisService().get_status(analysis_id)
+    result = AppFacade(current_user).analysis.get_status(analysis_id)
     return AnalysisStatusResponse(**result)
 
 
@@ -87,7 +108,7 @@ def get_analysis_result(
     analysis_id: int,
     current_user: User = Depends(allow_expert),
 ) -> AnalysisResultResponse:
-    result = AnalysisService().get_result(analysis_id)
+    result = AppFacade(current_user).analysis.get_result(analysis_id)
     return AnalysisResultResponse(**result)
 
 
@@ -96,7 +117,7 @@ def get_analysis_heatmap(
     analysis_id: int,
     current_user: User = Depends(allow_expert),
 ) -> AnalysisHeatmapResponse:
-    result = AnalysisService().get_heatmap(analysis_id)
+    result = AppFacade(current_user).analysis.get_heatmap(analysis_id)
     return AnalysisHeatmapResponse(**result)
 
 
@@ -106,7 +127,7 @@ def get_analysis_cell_detail(
     cell_index: str,
     current_user: User = Depends(allow_expert),
 ) -> AnalysisCellDetailResponse:
-    result = AnalysisService().get_cell_detail(analysis_id, cell_index)
+    result = AppFacade(current_user).analysis.get_cell_detail(analysis_id, cell_index)
     return AnalysisCellDetailResponse(**result)
 
 
@@ -116,12 +137,13 @@ def save_analysis_to_profile(
     req: AnalysisSaveRequest,
     current_user: User = Depends(allow_expert),
 ) -> AnalysisSaveResponse:
-    result = AnalysisService().save_to_profile(
+    result = AppFacade(current_user).analysis.save_to_profile(
         user_id=current_user.id,
         analysis_id=analysis_id,
         name=req.name,
         map_view=req.map_view,
         selected_bounds=req.selected_bounds,
+        expected_version=req.expected_version,
     )
     return AnalysisSaveResponse(**result)
 
@@ -133,7 +155,7 @@ def get_analysis_history(
     """
     List all past analyses for the current expert.
     """
-    result = AnalysisService().get_user_history(current_user.id)
+    result = AppFacade(current_user).analysis.get_user_history(current_user.id)
     return AnalysisHistoryResponse(**result)
 
 
@@ -142,7 +164,7 @@ def delete_saved_analysis(
     analysis_id: int,
     current_user: User = Depends(allow_expert),
 ) -> AnalysisHistoryDeleteResponse:
-    result = AnalysisService().delete_saved_analysis(user_id=current_user.id, analysis_id=analysis_id)
+    result = AppFacade(current_user).analysis.delete_saved_analysis(user_id=current_user.id, analysis_id=analysis_id)
     return AnalysisHistoryDeleteResponse(**result)
 
 
@@ -150,7 +172,7 @@ def delete_saved_analysis(
 def get_exported_reports(
     current_user: User = Depends(allow_expert),
 ) -> AnalysisReportListResponse:
-    result = AnalysisService().get_user_reports(current_user.id)
+    result = AppFacade(current_user).analysis.get_user_reports(current_user.id)
     return AnalysisReportListResponse(**result)
 
 
@@ -161,9 +183,9 @@ def export_analysis(
     current_user: User = Depends(allow_expert),
 ) -> AnalysisExportResponse:
     """
-    Export analysis results as GeoJSON or PDF report data.
+    Export analysis results as GeoJSON, CSV, or PDF report data.
     """
-    result = AnalysisService().export_results(user_id=current_user.id, analysis_id=analysis_id, format=format)
+    result = AppFacade(current_user).analysis.export_results(user_id=current_user.id, analysis_id=analysis_id, format=format)
     return AnalysisExportResponse(**result)
 
 
@@ -172,8 +194,8 @@ def download_exported_report(
     report_id: int,
     current_user: User = Depends(allow_expert),
 ):
-    payload = AnalysisService().get_report_download(user_id=current_user.id, report_id=report_id)
-    media_type = "application/geo+json" if payload["format"] == "geojson" else "application/pdf"
+    payload = AppFacade(current_user).analysis.get_report_download(user_id=current_user.id, report_id=report_id)
+    media_type = "application/geo+json" if payload["format"] == "geojson" else "text/csv" if payload["format"] == "csv" else "application/pdf"
     return FileResponse(
         path=payload["file_path"],
         media_type=media_type,
@@ -186,7 +208,7 @@ def delete_exported_report(
     report_id: int,
     current_user: User = Depends(allow_expert),
 ) -> AnalysisReportDeleteResponse:
-    result = AnalysisService().delete_report(user_id=current_user.id, report_id=report_id)
+    result = AppFacade(current_user).analysis.delete_report(user_id=current_user.id, report_id=report_id)
     return AnalysisReportDeleteResponse(**result)
 
 
@@ -195,7 +217,7 @@ def compare_analysis_candidates(
     req: AnalysisCompareRequest,
     current_user: User = Depends(allow_expert),
 ) -> AnalysisCompareResponse:
-    result = AnalysisService().compare_candidates(req.analysis_id, req.cell_indexes)
+    result = AppFacade(current_user).analysis.compare_candidates(req.analysis_id, req.cell_indexes)
     return AnalysisCompareResponse(**result)
 
 

@@ -50,6 +50,31 @@ class UserCreate(UserBase):
 class UserUpdate(UserBase):
     password: Optional[str] = None
 
+    @field_validator("full_name")
+    @classmethod
+    def validate_updated_full_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if len(normalized) < 2:
+            raise ValueError("Full name must be at least 2 characters long.")
+        return normalized
+
+    @field_validator("password")
+    @classmethod
+    def validate_updated_password_strength(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        if len(value) < 8:
+            raise ValueError("Password must be at least 8 characters long.")
+        if not any(char.islower() for char in value):
+            raise ValueError("Password must include at least one lowercase letter.")
+        if not any(char.isupper() for char in value):
+            raise ValueError("Password must include at least one uppercase letter.")
+        if not any(char.isdigit() for char in value):
+            raise ValueError("Password must include at least one digit.")
+        return value
+
 
 class UserInDBBase(UserBase):
     model_config = ConfigDict(from_attributes=True)

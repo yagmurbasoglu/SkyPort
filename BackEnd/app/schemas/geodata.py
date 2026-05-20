@@ -19,20 +19,24 @@ class IngestRequest(BaseModel):
 
 class IngestResponse(BaseModel):
     job_id: str
-    status: Literal["success", "partial_success", "failed", "running"]
+    status: Literal["success", "partial_success", "failed", "running", "paused"]
     warnings: list[str]
     layer_counts: dict[str, int]
+    version: int | None = None
     started_at: datetime
     finished_at: datetime | None
+    message: str | None = None
 
 
 class IngestStatusResponse(BaseModel):
     job_id: str
-    status: Literal["success", "partial_success", "failed", "running"]
+    status: Literal["success", "partial_success", "failed", "running", "paused"]
     warnings: list[str]
     layer_counts: dict[str, int]
+    version: int | None = None
     started_at: datetime
     finished_at: datetime | None
+    message: str | None = None
 
 
 class GeoFeatureCollection(BaseModel):
@@ -45,6 +49,9 @@ class IngestLayersResponse(BaseModel):
     layer_counts: dict[str, int]
     buildings: GeoFeatureCollection
     roads: GeoFeatureCollection
+    district_boundaries: GeoFeatureCollection
+    traffic_density: GeoFeatureCollection
+    socioeconomic: GeoFeatureCollection
 
 
 class AirspaceOverlayResponse(BaseModel):

@@ -9,10 +9,14 @@ from app.models.geodata import GeodataH3Cell, GeodataIngestJob
 def _job_to_dict(job: GeodataIngestJob) -> dict:
     return {
         "job_id": job.job_id,
+        "region_name": job.region_name,
         "status": job.status,
         "warnings": job.warnings or [],
         "layer_counts": job.layer_counts or {},
         "extracted_layers": job.extracted_layers or {},
+        "bounding_box": job.bounding_box,
+        "h3_resolution": job.h3_resolution,
+        "version": job.version,
         "started_at": job.started_at,
         "finished_at": job.finished_at,
         "updated_at": job.updated_at,
@@ -32,6 +36,7 @@ def create_job(job_id: str, payload: dict) -> dict:
             extracted_layers=payload.get("extracted_layers", {}),
             started_at=payload["started_at"],
             finished_at=payload["finished_at"],
+            version=payload.get("version", 1),
             updated_at=payload.get("updated_at", datetime.now(timezone.utc)),
         )
         db.add(job)
@@ -49,6 +54,7 @@ def update_job(job_id: str, patch: dict) -> dict | None:
         h3_cells: list[str] = patch.pop("h3_cells", [])
         for key, value in patch.items():
             setattr(job, key, value)
+        job.version = int(job.version or 1) + 1
         job.updated_at = datetime.now(timezone.utc)
 
         db.query(GeodataH3Cell).filter(GeodataH3Cell.job_id == job_id).delete()

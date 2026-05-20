@@ -208,7 +208,7 @@ def test_get_ingest_layers_returns_building_feature_collection(monkeypatch) -> N
     monkeypatch.setattr(
         geodata_service,
         "_serialize_geo_features",
-        lambda _features: {
+        lambda _features, max_features=200: {
             "type": "FeatureCollection",
             "features": [
                 {
@@ -238,6 +238,70 @@ def test_get_ingest_layers_returns_building_feature_collection(monkeypatch) -> N
     assert body["buildings"]["type"] == "FeatureCollection"
     assert len(body["buildings"]["features"]) == 1
     assert body["roads"]["type"] == "FeatureCollection"
+    assert body["district_boundaries"]["type"] == "FeatureCollection"
+
+
+def test_ingest_persists_official_traffic_and_socioeconomic_layers(monkeypatch) -> None:
+    monkeypatch.setattr(
+        geodata_service,
+        "extract_osm_data",
+        lambda _bbox: (
+            {"buildings": [1], "roads": [1], "land_use": [1], "district_boundaries": [1], "nfz": [], "controlled_airspace": []},
+            [],
+        ),
+    )
+    monkeypatch.setattr(geodata_service, "clean_and_transform", lambda features: features)
+    monkeypatch.setattr(geodata_service, "generate_h3_grid", lambda _bbox, _res: ["c1"])
+    monkeypatch.setattr(
+        geodata_service,
+        "_serialize_geo_features",
+        lambda _features, max_features=200: {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[28.95, 41.0], [28.96, 41.0], [28.96, 41.01], [28.95, 41.01], [28.95, 41.0]]],
+                    },
+                    "properties": {"name": "Bakirkoy"},
+                }
+            ],
+            "total": 1,
+            "truncated": False,
+        },
+    )
+    monkeypatch.setattr(
+        geodata_service,
+        "load_ibb_traffic_layer",
+        lambda _bbox: (
+            {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": None, "properties": {"official_traffic_score": 0.82}}], "total": 1, "truncated": False, "source": "ibb_official"},
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        geodata_service,
+        "build_tuik_socioeconomic_layer",
+        lambda _districts: (
+            {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": None, "properties": {"official_population_score": 0.74}}], "total": 1, "truncated": False, "source": "tuik_official"},
+            [],
+        ),
+    )
+
+    def run_inline(job_id: str, req_data: dict) -> None:
+        geodata_service._run_ingest_job(job_id, req_data)
+
+    monkeypatch.setattr(geodata_service, "_start_worker", run_inline)
+
+    created = client.post("/api/geodata/ingest", json=_valid_payload())
+    assert created.status_code == 200
+    job_id = created.json()["job_id"]
+
+    response = client.get(f"/api/geodata/ingest/{job_id}/layers")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["traffic_density"]["features"]) == 1
+    assert len(body["socioeconomic"]["features"]) == 1
 
 
 def test_extract_osm_data_warns_when_notam_overlay_missing(monkeypatch) -> None:

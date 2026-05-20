@@ -1,8 +1,10 @@
 import hashlib
 import json
 import logging
+import csv
 from datetime import datetime, timezone
-from math import cos, isfinite, radians
+from io import StringIO
+from math import atan2, cos, isfinite, radians, sin, sqrt
 from pathlib import Path
 from threading import Thread
 from typing import Any
@@ -10,6 +12,7 @@ from typing import Any
 from fastapi import HTTPException, status
 from shapely.geometry import Polygon, shape
 
+from app.core.runtime import runtime_state
 from app.repos import analysis_repo
 from app.repos import report_repo
 from app.repos.nfz_repo import list_nfz_geojson_in_bbox
@@ -22,14 +25,18 @@ except ModuleNotFoundError:  # pragma: no cover - environment-dependent
 
 logger = logging.getLogger(__name__)
 EXPORTS_DIR = Path(__file__).resolve().parents[2] / "generated_reports"
+ISTANBUL_DEMAND_CENTER = {"lat": 41.0369, "lng": 28.9850}
 
-ALLOWED_CRITERIA = {"obstacle", "transport", "land_use", "nfz"}
-CRITERIA_ORDER = ["obstacle", "transport", "land_use", "nfz"]
+ALLOWED_CRITERIA = {"obstacle", "transport", "land_use", "nfz", "traffic_density", "socioeconomic"}
+LEGACY_REQUIRED_CRITERIA = {"obstacle", "transport", "land_use", "nfz"}
+CRITERIA_ORDER = ["obstacle", "transport", "land_use", "nfz", "traffic_density", "socioeconomic"]
 CRITERIA_DIRECTION = {
     "obstacle": "cost",
     "transport": "benefit",
     "land_use": "benefit",
     "nfz": "benefit",
+    "traffic_density": "benefit",
+    "socioeconomic": "benefit",
 }
 RANDOM_INDEX_BY_SIZE = {
     1: 0.0,
@@ -70,7 +77,8 @@ def validate_criteria_weights(criteria_weights: dict[str, float]) -> dict[str, f
         )
 
     missing = sorted(ALLOWED_CRITERIA - set(criteria_weights))
-    if missing:
+    legacy_only_missing = set(missing).issubset({"traffic_density", "socioeconomic"}) and LEGACY_REQUIRED_CRITERIA.issubset(criteria_weights)
+    if missing and not legacy_only_missing:
         raise _error(
             status.HTTP_400_BAD_REQUEST,
             "INVALID_CRITERIA_WEIGHTS",
@@ -79,7 +87,9 @@ def validate_criteria_weights(criteria_weights: dict[str, float]) -> dict[str, f
         )
 
     normalized: dict[str, float] = {}
-    for key, value in criteria_weights.items():
+    ordered_keys = [key for key in CRITERIA_ORDER if key in criteria_weights or key in LEGACY_REQUIRED_CRITERIA]
+    for key in ordered_keys:
+        value = criteria_weights.get(key, 0.0)
         numeric_value = float(value)
         if not isfinite(numeric_value) or numeric_value < 0:
             raise _error(
@@ -104,6 +114,13 @@ def validate_criteria_weights(criteria_weights: dict[str, float]) -> dict[str, f
         )
 
     return normalized
+
+
+def _expand_criteria_weights(criteria_weights: dict[str, float] | None) -> dict[str, float]:
+    return {
+        key: float((criteria_weights or {}).get(key, 0.0))
+        for key in CRITERIA_ORDER
+    }
 
 
 def _cell_variation(cell_index: str, salt: str) -> float:
@@ -132,6 +149,213 @@ def _cell_polygon(cell_index: str) -> Polygon | None:
 
 def _deg_to_km(distance_deg: float) -> float:
     return float(distance_deg) * 111.32
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    radius = 6371.0
+    d_lat = radians(lat2 - lat1)
+    d_lng = radians(lng2 - lng1)
+    a = (
+        sin(d_lat / 2) ** 2
+        + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lng / 2) ** 2
+    )
+    return radius * 2 * atan2(sqrt(a), sqrt(1 - a))
+
+
+def _cell_centroid(cell_polygon: Polygon | None) -> tuple[float | None, float | None]:
+    if cell_polygon is None or cell_polygon.is_empty:
+        return None, None
+    centroid = cell_polygon.centroid
+    return float(centroid.y), float(centroid.x)
+
+
+def _layer_features(geodata_job: dict[str, Any], layer: str) -> list[dict[str, Any]]:
+    layers = geodata_job.get("extracted_layers") or {}
+    layer_payload = layers.get(layer) or {}
+    features = layer_payload.get("features")
+    return features if isinstance(features, list) else []
+
+
+def _safe_numeric(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    return numeric if isfinite(numeric) else None
+
+
+def _prepare_scored_features(
+    geodata_job: dict[str, Any],
+    layer: str,
+    score_key: str,
+) -> list[tuple[Any, float, dict[str, Any]]]:
+    prepared: list[tuple[Any, float, dict[str, Any]]] = []
+    for feature in _layer_features(geodata_job, layer):
+        geometry_payload = feature.get("geometry")
+        if not geometry_payload:
+            continue
+        try:
+            geometry = shape(geometry_payload)
+        except Exception:
+            continue
+        if geometry.is_empty:
+            continue
+        properties = dict(feature.get("properties") or {})
+        score = _safe_numeric(properties.get(score_key))
+        if score is None:
+            continue
+        prepared.append((geometry, _clamp(score), properties))
+    return prepared
+
+
+def _weighted_intersection_score(
+    cell_polygon: Polygon | None,
+    prepared_features: list[tuple[Any, float, dict[str, Any]]],
+) -> tuple[float | None, list[dict[str, Any]]]:
+    if cell_polygon is None or cell_polygon.is_empty or not prepared_features:
+        return None, []
+
+    weighted_scores: list[tuple[float, float]] = []
+    matches: list[dict[str, Any]] = []
+    cell_area = cell_polygon.area or 0.0
+    for geometry, score, properties in prepared_features:
+        if not cell_polygon.intersects(geometry):
+            continue
+        if geometry.geom_type in {"Polygon", "MultiPolygon"} and cell_area > 0:
+            weight = max(cell_polygon.intersection(geometry).area / cell_area, 0.05)
+        else:
+            weight = 1.0
+        weighted_scores.append((score, weight))
+        matches.append(properties)
+
+    if not weighted_scores:
+        return None, []
+
+    numerator = sum(score * weight for score, weight in weighted_scores)
+    denominator = sum(weight for _, weight in weighted_scores) or 1.0
+    return _clamp(numerator / denominator), matches
+
+
+def _traffic_density_base(geodata_job: dict[str, Any], roads_count: float) -> tuple[float, dict[str, Any]]:
+    road_features = _layer_features(geodata_job, "roads")
+    highway_weights = {
+        "motorway": 1.0,
+        "trunk": 0.92,
+        "primary": 0.82,
+        "secondary": 0.68,
+        "tertiary": 0.54,
+    }
+    weighted_major_roads = 0.0
+    major_road_count = 0
+    for feature in road_features:
+        highway = str(((feature.get("properties") or {}).get("highway") or "")).strip().lower()
+        if highway in highway_weights:
+            weighted_major_roads += highway_weights[highway]
+            major_road_count += 1
+
+    sampled = len(road_features)
+    if sampled == 0:
+        sampled = int(roads_count)
+        weighted_major_roads = min(roads_count / 8.0, 12.0)
+        major_road_count = int(min(roads_count, 20))
+
+    base = _clamp(0.28 + min(weighted_major_roads / 22.0, 0.58))
+    return base, {
+        "source": "osm_proxy_fallback",
+        "sampled_road_features": sampled,
+        "major_road_count": major_road_count,
+        "weighted_major_road_score": round(weighted_major_roads, 3),
+    }
+
+
+def _official_traffic_density_score(
+    cell_polygon: Polygon | None,
+    prepared_features: list[tuple[Any, float, dict[str, Any]]],
+) -> tuple[float | None, dict[str, Any]]:
+    score, matches = _weighted_intersection_score(cell_polygon, prepared_features)
+    if score is None:
+        return None, {}
+    properties = matches[0] if matches else {}
+    return score, {
+        "source": "ibb_official",
+        "matched_feature_count": len(matches),
+        "official_property": properties.get("official_traffic_property"),
+    }
+
+
+def _socioeconomic_base(geodata_job: dict[str, Any], cell_polygon: Polygon | None) -> tuple[float, dict[str, Any]]:
+    land_features = _layer_features(geodata_job, "land_use")
+    favorable = {"commercial": 1.0, "retail": 0.95, "industrial": 0.72, "construction": 0.62}
+    neutral = {"railway": 0.62, "port": 0.78, "brownfield": 0.58, "recreation_ground": 0.42}
+    sensitive = {"residential": 0.18, "forest": 0.25, "farmland": 0.24, "meadow": 0.34, "cemetery": 0.15}
+    weighted_sum = 0.0
+    matched = 0
+    for feature in land_features:
+        land_use = str(((feature.get("properties") or {}).get("landuse") or "")).strip().lower()
+        if land_use in favorable:
+            weighted_sum += favorable[land_use]
+            matched += 1
+        elif land_use in neutral:
+            weighted_sum += neutral[land_use]
+            matched += 1
+        elif land_use in sensitive:
+            weighted_sum += sensitive[land_use]
+            matched += 1
+
+    land_mix_score = (weighted_sum / matched) if matched else 0.55
+    cell_lat, cell_lng = _cell_centroid(cell_polygon)
+    if cell_lat is None or cell_lng is None:
+        centrality = 0.55
+        distance_to_center_km = None
+    else:
+        distance_to_center_km = _haversine_km(
+            cell_lat,
+            cell_lng,
+            ISTANBUL_DEMAND_CENTER["lat"],
+            ISTANBUL_DEMAND_CENTER["lng"],
+        )
+        centrality = _clamp(1.0 - min(distance_to_center_km / 35.0, 0.82))
+
+    score = _clamp((land_mix_score * 0.52) + (centrality * 0.48))
+    return score, {
+        "source": "osm_proxy_fallback",
+        "land_mix_score": round(land_mix_score, 3),
+        "centrality_score": round(centrality, 3),
+        "distance_to_center_km": round(distance_to_center_km, 3) if distance_to_center_km is not None else None,
+        "sampled_land_use_features": len(land_features),
+    }
+
+
+def _official_socioeconomic_score(
+    cell_polygon: Polygon | None,
+    prepared_features: list[tuple[Any, float, dict[str, Any]]],
+) -> tuple[float | None, dict[str, Any]]:
+    score, matches = _weighted_intersection_score(cell_polygon, prepared_features)
+    if score is None:
+        return None, {}
+    district_names = sorted(
+        {
+            str(item.get("district_name") or item.get("name") or "").strip()
+            for item in matches
+            if item.get("district_name") or item.get("name")
+        }
+    )
+    population_values = [
+        _safe_numeric(item.get("official_population_total"))
+        for item in matches
+    ]
+    population_values = [value for value in population_values if value is not None]
+    return score, {
+        "source": "tuik_official",
+        "matched_districts": district_names,
+        "matched_feature_count": len(matches),
+        "population_metric": "district_total_population",
+        "population_total_average": round(sum(population_values) / len(population_values), 3)
+        if population_values
+        else None,
+    }
 
 
 def _expand_bbox_for_nfz_lookup(bbox: BoundingBox, buffer_km: float = 5.0) -> BoundingBox:
@@ -440,6 +664,7 @@ def _write_analysis_pdf(
 
 
 def _build_ahp_metadata(weights: dict[str, float]) -> dict[str, Any]:
+    weights = _expand_criteria_weights(weights)
     ordered_weights = [weights[key] for key in CRITERIA_ORDER]
     safe_weights = [weight if weight > 0 else 1e-6 for weight in ordered_weights]
     has_zero_weight = any(weight <= 0 for weight in ordered_weights)
@@ -470,15 +695,18 @@ def _build_ahp_metadata(weights: dict[str, float]) -> dict[str, Any]:
 
 
 def _euclidean_denominator(rows: list[dict[str, float]], criterion: str) -> float:
-    return sum(row[criterion] ** 2 for row in rows) ** 0.5
+    return sum(float(row.get(criterion, 0.0)) ** 2 for row in rows) ** 0.5
 
 
 def _run_topsis(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[dict[str, Any]]:
+    weights = _expand_criteria_weights(weights)
     if not rows:
         return []
     if len(rows) == 1:
         row = rows[0]
-        weighted_score = sum(row["criteria_scores"][criterion] * weights[criterion] for criterion in CRITERIA_ORDER)
+        criteria_scores = _expand_criteria_weights(row.get("criteria_scores") or {})
+        decision_values = _expand_criteria_weights(row.get("decision_values") or {})
+        weighted_score = sum(criteria_scores[criterion] * weights[criterion] for criterion in CRITERIA_ORDER)
         nfz_intersects = bool((row.get("criteria_context") or {}).get("nfz", {}).get("intersects_nfz"))
         return [
             {
@@ -489,16 +717,17 @@ def _run_topsis(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[d
                     "note": "TOPSIS ranking requires at least two alternatives; score uses the AHP priority vector over normalized criterion scores.",
                     "criteria_order": CRITERIA_ORDER,
                     "criteria_direction": CRITERIA_DIRECTION,
-                    "criteria_scores": row["criteria_scores"],
+                    "priority_vector": {criterion: round(weights[criterion], 6) for criterion in CRITERIA_ORDER},
+                    "criteria_scores": criteria_scores,
                     "criteria_context": row.get("criteria_context") or {},
-                    "decision_values": row["decision_values"],
-                    "normalized_values": row["criteria_scores"],
+                    "decision_values": decision_values,
+                    "normalized_values": criteria_scores,
                     "weighted_values": {
-                        criterion: round(row["criteria_scores"][criterion] * weights[criterion], 6)
+                        criterion: round(criteria_scores[criterion] * weights[criterion], 6)
                         for criterion in CRITERIA_ORDER
                     },
-                    "ideal_best": row["criteria_scores"],
-                    "ideal_worst": row["criteria_scores"],
+                    "ideal_best": criteria_scores,
+                    "ideal_worst": criteria_scores,
                     "distance_to_best": 0.0,
                     "distance_to_worst": 0.0,
                     "topsis_closeness": round(weighted_score, 6),
@@ -514,14 +743,22 @@ def _run_topsis(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[d
     }
     weighted_rows: list[dict[str, Any]] = []
     for row in rows:
+        criteria_scores = _expand_criteria_weights(row.get("criteria_scores") or {})
+        decision_values = _expand_criteria_weights(row.get("decision_values") or {})
         normalized: dict[str, float] = {}
         weighted: dict[str, float] = {}
         for criterion in CRITERIA_ORDER:
             denominator = denominators[criterion]
-            normalized_value = row["decision_values"][criterion] / denominator if denominator else 0.0
+            normalized_value = decision_values[criterion] / denominator if denominator else 0.0
             normalized[criterion] = normalized_value
             weighted[criterion] = normalized_value * weights[criterion]
-        weighted_rows.append({**row, "normalized_values": normalized, "weighted_values": weighted})
+        weighted_rows.append({
+            **row,
+            "criteria_scores": criteria_scores,
+            "decision_values": decision_values,
+            "normalized_values": normalized,
+            "weighted_values": weighted,
+        })
 
     ideal_best: dict[str, float] = {}
     ideal_worst: dict[str, float] = {}
@@ -559,6 +796,7 @@ def _run_topsis(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[d
                     "display_score_method": "TOPSIS_CLOSENESS",
                     "criteria_order": CRITERIA_ORDER,
                     "criteria_direction": CRITERIA_DIRECTION,
+                    "priority_vector": {criterion: round(weights[criterion], 6) for criterion in CRITERIA_ORDER},
                     "criteria_scores": row["criteria_scores"],
                     "criteria_context": row.get("criteria_context") or {},
                     "decision_values": row["decision_values"],
@@ -581,6 +819,18 @@ def _run_topsis(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[d
 
 
 class AnalysisService:
+    def _assert_expected_version(self, analysis: dict[str, Any], expected_version: int | None) -> None:
+        if expected_version is None:
+            return
+        actual_version = int(analysis.get("version") or 0)
+        if actual_version != int(expected_version):
+            raise _error(
+                status.HTTP_409_CONFLICT,
+                "ANALYSIS_VERSION_CONFLICT",
+                "This analysis changed while you were editing it. Refresh and try again.",
+                {"expected_version": expected_version, "actual_version": actual_version},
+            )
+
     def _prepare_analysis_inputs(self, geodata_job_id: str) -> tuple[dict[str, Any], list[str]]:
         geodata_job = analysis_repo.get_geodata_job(geodata_job_id)
         if geodata_job is None:
@@ -614,7 +864,7 @@ class AnalysisService:
         region_name: str | None,
         criteria_weights: dict[str, float],
     ) -> dict[str, Any]:
-        weights = validate_criteria_weights(criteria_weights)
+        weights = _expand_criteria_weights(validate_criteria_weights(criteria_weights))
         geodata_job, cells = self._prepare_analysis_inputs(geodata_job_id)
 
         analysis = analysis_repo.create_analysis(
@@ -623,10 +873,12 @@ class AnalysisService:
             region_name=region_name or geodata_job["region_name"],
             criteria_weights=weights,
         )
+        runtime_state.register_job("analysis", str(analysis["id"]))
         self._start_worker(analysis["id"], geodata_job, cells, weights)
         return {
             "analysis_id": analysis["id"],
             "status": analysis["status"],
+            "version": analysis.get("version"),
             "message": "Analysis job started.",
         }
 
@@ -636,8 +888,9 @@ class AnalysisService:
         user_id: int,
         analysis_id: int,
         criteria_weights: dict[str, float],
+        expected_version: int | None = None,
     ) -> dict[str, Any]:
-        weights = validate_criteria_weights(criteria_weights)
+        weights = _expand_criteria_weights(validate_criteria_weights(criteria_weights))
         analysis = analysis_repo.get_analysis(analysis_id)
         if analysis is None:
             raise _error(status.HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "Analysis not found.")
@@ -647,6 +900,7 @@ class AnalysisService:
                 "ANALYSIS_ACCESS_DENIED",
                 "You do not have permission to recalculate this analysis.",
             )
+        self._assert_expected_version(analysis, expected_version)
 
         geodata_job_id = analysis.get("geodata_job_id")
         if not geodata_job_id:
@@ -661,10 +915,12 @@ class AnalysisService:
         if updated is None:
             raise _error(status.HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "Analysis not found.")
 
+        runtime_state.register_job("analysis", str(analysis_id))
         self._start_worker(analysis_id, geodata_job, cells, weights)
         return {
             "analysis_id": analysis_id,
             "status": updated["status"],
+            "version": updated.get("version"),
             "message": "Analysis weights saved and recalculation has started.",
         }
 
@@ -690,15 +946,18 @@ class AnalysisService:
         weights: dict[str, float],
     ) -> None:
         try:
-            results = self._calculate_results(geodata_job=geodata_job, cells=cells, weights=weights)
+            results = self._calculate_results(analysis_id=analysis_id, geodata_job=geodata_job, cells=cells, weights=weights)
             analysis_repo.complete_analysis(analysis_id, results)
+            runtime_state.complete_job("analysis", str(analysis_id), state="completed")
         except Exception:
             logger.exception("Analysis job failed (%s).", analysis_id)
             analysis_repo.fail_analysis(analysis_id)
+            runtime_state.complete_job("analysis", str(analysis_id), state="failed")
 
     def _calculate_results(
         self,
         *,
+        analysis_id: int | None = None,
         geodata_job: dict[str, Any],
         cells: list[str],
         weights: dict[str, float],
@@ -708,6 +967,17 @@ class AnalysisService:
         roads = float(layer_counts.get("roads", 0))
         land_use = float(layer_counts.get("land_use", 0))
         nfz_polygons = _nfz_polygons_for_geodata_job(geodata_job)
+        traffic_density_base, traffic_density_context = _traffic_density_base(geodata_job, roads)
+        official_traffic_features = _prepare_scored_features(
+            geodata_job,
+            "traffic_density",
+            "official_traffic_score",
+        )
+        official_socioeconomic_features = _prepare_scored_features(
+            geodata_job,
+            "socioeconomic",
+            "official_population_score",
+        )
 
         obstacle_base = 1.0 - min(buildings / 1000.0, 0.65)
         transport_base = 0.35 + min(roads / 300.0, 0.65)
@@ -715,28 +985,79 @@ class AnalysisService:
 
         decision_rows: list[dict[str, Any]] = []
         for cell in cells:
+            if analysis_id is not None:
+                runtime_state.wait_if_paused("analysis", str(analysis_id))
             cell_geometry = _cell_polygon(cell)
             nfz_score, nfz_context = _nfz_score_for_cell(cell_geometry, nfz_polygons)
+            official_traffic_score, official_traffic_context = _official_traffic_density_score(
+                cell_geometry,
+                official_traffic_features,
+            )
+            official_socioeconomic_score, official_socioeconomic_context = _official_socioeconomic_score(
+                cell_geometry,
+                official_socioeconomic_features,
+            )
+            socioeconomic_score_base, socioeconomic_context = _socioeconomic_base(geodata_job, cell_geometry)
             obstacle_safety = _clamp(obstacle_base - (_cell_variation(cell, "obstacle") * 0.15))
+            transport_score = _clamp(transport_base + ((_cell_variation(cell, "transport") - 0.5) * 0.20))
+            land_use_score = _clamp(land_use_base + ((_cell_variation(cell, "land_use") - 0.5) * 0.18))
+            if official_traffic_score is not None:
+                traffic_density_score = _clamp(official_traffic_score)
+                traffic_context = {
+                    **official_traffic_context,
+                    "traffic_density_score": round(traffic_density_score, 3),
+                }
+            else:
+                traffic_density_score = _clamp(
+                    traffic_density_base + ((_cell_variation(cell, "traffic_density") - 0.5) * 0.22)
+                )
+                traffic_context = {
+                    **traffic_density_context,
+                    "traffic_density_score": round(traffic_density_score, 3),
+                }
+
+            if official_socioeconomic_score is not None:
+                socioeconomic_score = _clamp(official_socioeconomic_score)
+                socioeconomic_context_payload = {
+                    **official_socioeconomic_context,
+                    "socioeconomic_score": round(socioeconomic_score, 3),
+                }
+            else:
+                socioeconomic_score = _clamp(
+                    socioeconomic_score_base + ((_cell_variation(cell, "socioeconomic") - 0.5) * 0.16)
+                )
+                socioeconomic_context_payload = {
+                    **socioeconomic_context,
+                    "socioeconomic_score": round(socioeconomic_score, 3),
+                }
             criteria_scores = {
                 "obstacle": obstacle_safety,
-                "transport": _clamp(transport_base + ((_cell_variation(cell, "transport") - 0.5) * 0.20)),
-                "land_use": _clamp(land_use_base + ((_cell_variation(cell, "land_use") - 0.5) * 0.18)),
+                "transport": transport_score,
+                "land_use": land_use_score,
                 "nfz": nfz_score,
+                "traffic_density": traffic_density_score,
+                "socioeconomic": socioeconomic_score,
             }
             decision_values = {
                 # TOPSIS handles obstacle as a cost criterion: lower risk is better.
                 "obstacle": _clamp(1.0 - obstacle_safety),
-                "transport": criteria_scores["transport"],
-                "land_use": criteria_scores["land_use"],
-                "nfz": criteria_scores["nfz"],
+                "transport": transport_score,
+                "land_use": land_use_score,
+                "nfz": nfz_score,
+                "traffic_density": traffic_density_score,
+                "socioeconomic": socioeconomic_score,
             }
             decision_rows.append(
                 {
                     "cell_index": cell,
                     "criteria_scores": criteria_scores,
                     "criteria_context": {
+                        "obstacle": {"building_signal_count": int(buildings)},
+                        "transport": {"transport_score": round(transport_score, 3), "sampled_road_count": int(roads)},
+                        "land_use": {"land_use_score": round(land_use_score, 3), "sampled_land_use_count": int(land_use)},
                         "nfz": nfz_context,
+                        "traffic_density": traffic_context,
+                        "socioeconomic": socioeconomic_context_payload,
                     },
                     "decision_values": decision_values,
                     "geometry": cell_geometry,
@@ -748,12 +1069,15 @@ class AnalysisService:
         analysis = analysis_repo.get_analysis(analysis_id)
         if analysis is None:
             raise _error(status.HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "Analysis not found.")
+        runtime_state_value = runtime_state.get_job_state("analysis", str(analysis_id))
+        derived_status = "paused" if runtime_state_value == "paused" and analysis["status"] == "running" else analysis["status"]
         return {
             "analysis_id": analysis["id"],
-            "status": analysis["status"],
+            "status": derived_status,
+            "version": analysis.get("version"),
             "started_at": analysis["started_at"],
             "completed_at": analysis["completed_at"],
-            "message": None,
+            "message": "Analysis job is paused." if derived_status == "paused" else None,
         }
 
     def get_result(self, analysis_id: int) -> dict[str, Any]:
@@ -765,8 +1089,9 @@ class AnalysisService:
         return {
             "analysis_id": analysis["id"],
             "status": analysis["status"],
+            "version": analysis.get("version"),
             "region_name": analysis["region_name"],
-            "criteria_weights": analysis["criteria_weights"],
+            "criteria_weights": _expand_criteria_weights(analysis["criteria_weights"]),
             "mcdm": _build_ahp_metadata(analysis["criteria_weights"]),
             "summary": summary,
             "top_candidates": [
@@ -867,6 +1192,7 @@ class AnalysisService:
         name: str,
         map_view: dict[str, Any] | None,
         selected_bounds: dict[str, Any] | None,
+        expected_version: int | None = None,
     ) -> dict[str, Any]:
         analysis = analysis_repo.get_analysis(analysis_id)
         if analysis is None:
@@ -877,6 +1203,7 @@ class AnalysisService:
                 "ANALYSIS_ACCESS_DENIED",
                 "You do not have permission to save this analysis.",
             )
+        self._assert_expected_version(analysis, expected_version)
         if analysis.get("status") != "completed":
             raise _error(
                 status.HTTP_409_CONFLICT,
@@ -901,7 +1228,40 @@ class AnalysisService:
             "analysis_id": analysis_id,
             "saved_name": saved["saved_name"],
             "saved_at": saved["saved_at"],
+            "version": saved.get("version"),
             "message": "Analysis successfully saved to your profile.",
+        }
+
+    def pause_analysis(self, *, user_id: int, analysis_id: int) -> dict[str, Any]:
+        analysis = analysis_repo.get_analysis(analysis_id)
+        if analysis is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "Analysis not found.")
+        if analysis.get("user_id") not in (None, user_id):
+            raise _error(status.HTTP_403_FORBIDDEN, "ANALYSIS_ACCESS_DENIED", "You do not have permission to pause this analysis.")
+        if analysis.get("status") != "running":
+            raise _error(status.HTTP_409_CONFLICT, "ANALYSIS_NOT_RUNNING", "Only running analysis jobs can be paused.")
+        runtime_state.pause_job("analysis", str(analysis_id))
+        return {
+            "analysis_id": analysis_id,
+            "status": "paused",
+            "version": analysis.get("version"),
+            "message": "Analysis job paused.",
+        }
+
+    def resume_analysis(self, *, user_id: int, analysis_id: int) -> dict[str, Any]:
+        analysis = analysis_repo.get_analysis(analysis_id)
+        if analysis is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "Analysis not found.")
+        if analysis.get("user_id") not in (None, user_id):
+            raise _error(status.HTTP_403_FORBIDDEN, "ANALYSIS_ACCESS_DENIED", "You do not have permission to resume this analysis.")
+        if analysis.get("status") != "running":
+            raise _error(status.HTTP_409_CONFLICT, "ANALYSIS_NOT_RUNNING", "Only running analysis jobs can be resumed.")
+        runtime_state.resume_job("analysis", str(analysis_id))
+        return {
+            "analysis_id": analysis_id,
+            "status": "running",
+            "version": analysis.get("version"),
+            "message": "Analysis job resumed.",
         }
 
     def run_ahp_topsis(self, region_id: str, criteria_weights: dict[str, float]) -> dict[str, Any]:
@@ -958,6 +1318,7 @@ class AnalysisService:
                 "analysis_id": a["id"],
                 "region_name": a["region_name"],
                 "status": a["status"],
+                "version": a.get("version"),
                 "created_at": a["created_at"],
                 "saved_name": a.get("saved_name"),
                 "saved_at": a.get("saved_at"),
@@ -1014,12 +1375,12 @@ class AnalysisService:
             )
 
         normalized_format = format.strip().lower()
-        if normalized_format not in {"geojson", "pdf"}:
+        if normalized_format not in {"geojson", "pdf", "csv"}:
             raise _error(
                 status.HTTP_400_BAD_REQUEST,
                 "INVALID_EXPORT_FORMAT",
-                "format must be either 'geojson' or 'pdf'.",
-                {"allowed": ["geojson", "pdf"]},
+                "format must be one of 'geojson', 'pdf', or 'csv'.",
+                {"allowed": ["geojson", "pdf", "csv"]},
             )
 
         EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1046,8 +1407,49 @@ class AnalysisService:
                 "geojson": heatmap,
             }
 
-        summary = analysis_repo.summarize_results(analysis_id)
         results = analysis_repo.list_results(analysis_id)
+        if normalized_format == "csv":
+            file_name = f"{base_name}.csv"
+            file_path = EXPORTS_DIR / file_name
+            buffer = StringIO()
+            writer = csv.DictWriter(
+                buffer,
+                fieldnames=[
+                    "rank",
+                    "cell_index",
+                    "suitability_score",
+                    *CRITERIA_ORDER,
+                    "hard_constraint_violation",
+                ],
+            )
+            writer.writeheader()
+            for index, row in enumerate(results, start=1):
+                scores = ((row.get("criteria_breakdown") or {}).get("criteria_scores") or {})
+                writer.writerow(
+                    {
+                        "rank": index,
+                        "cell_index": row.get("cell_index"),
+                        "suitability_score": row.get("suitability_score"),
+                        **{criterion: scores.get(criterion) for criterion in CRITERIA_ORDER},
+                        "hard_constraint_violation": (row.get("criteria_breakdown") or {}).get("hard_constraint_violation"),
+                    }
+                )
+            file_path.write_text(buffer.getvalue(), encoding="utf-8", newline="")
+            report = report_repo.create_report(
+                analysis_id=analysis_id,
+                user_id=user_id,
+                report_format="csv",
+                file_path=str(file_path),
+            )
+            return {
+                "report_id": report["id"],
+                "analysis_id": analysis_id,
+                "format": "csv",
+                "file_name": file_name,
+                "download_url": f"/api/analysis/reports/{report['id']}/download",
+            }
+
+        summary = analysis_repo.summarize_results(analysis_id)
         report_payload = {
             "analysis": analysis,
             "summary": summary,

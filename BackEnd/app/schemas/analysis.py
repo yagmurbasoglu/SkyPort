@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-AnalysisStatus = Literal["pending", "running", "completed", "failed"]
+AnalysisStatus = Literal["pending", "running", "paused", "completed", "failed"]
 
 
 class AnalysisCreateRequest(BaseModel):
@@ -16,29 +16,34 @@ class AnalysisCreateRequest(BaseModel):
 class AnalysisCreateResponse(BaseModel):
     analysis_id: int
     status: AnalysisStatus
+    version: int | None = None
     message: str
 
 
 class AnalysisRecalculateRequest(BaseModel):
     criteria_weights: dict[str, float]
+    expected_version: int | None = None
 
 
 class AnalysisSaveRequest(BaseModel):
     name: str = Field(..., min_length=3, max_length=160)
     map_view: dict | None = None
     selected_bounds: dict | None = None
+    expected_version: int | None = None
 
 
 class AnalysisSaveResponse(BaseModel):
     analysis_id: int
     saved_name: str
     saved_at: datetime
+    version: int | None = None
     message: str
 
 
 class AnalysisStatusResponse(BaseModel):
     analysis_id: int
     status: AnalysisStatus
+    version: int | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     message: str | None = None
@@ -61,6 +66,7 @@ class CandidateResult(BaseModel):
 class AnalysisResultResponse(BaseModel):
     analysis_id: int
     status: AnalysisStatus
+    version: int | None = None
     region_name: str | None
     criteria_weights: dict
     mcdm: dict
@@ -97,6 +103,7 @@ class AnalysisHistoryItem(BaseModel):
     analysis_id: int
     region_name: str | None
     status: AnalysisStatus
+    version: int | None = None
     created_at: datetime
     saved_name: str | None = None
     saved_at: datetime | None = None
@@ -121,6 +128,13 @@ class AnalysisExportResponse(BaseModel):
     download_url: str | None = None
     geojson: dict | None = None
     report: dict | None = None
+
+
+class AnalysisJobControlResponse(BaseModel):
+    analysis_id: int
+    status: AnalysisStatus
+    version: int | None = None
+    message: str
 
 
 class AnalysisReportItem(BaseModel):

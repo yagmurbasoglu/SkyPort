@@ -8,7 +8,7 @@ from app.schemas.route import (
     RouteSafetyResponse,
     RouteSimulationResponse,
 )
-from app.services.route_service import RouteService
+from app.services.app_facade import AppFacade
 
 router = APIRouter()
 allow_authenticated = RoleChecker(["expert", "passenger"])
@@ -19,7 +19,7 @@ def create_route(
     req: RouteCreateRequest,
     current_user: User = Depends(allow_authenticated),
 ) -> RouteResponse:
-    result = RouteService().create_route(user_id=current_user.id, req=req)
+    result = AppFacade(current_user).route.create_route(user_id=current_user.id, req=req)
     return RouteResponse(**result)
 
 
@@ -28,7 +28,7 @@ def run_route_safety_check(
     route_id: int,
     current_user: User = Depends(allow_authenticated),
 ) -> RouteSafetyResponse:
-    result = RouteService().evaluate_safety(route_id, user_id=current_user.id)
+    result = AppFacade(current_user).route.evaluate_safety(route_id, user_id=current_user.id)
     return RouteSafetyResponse(**result)
 
 
@@ -37,5 +37,5 @@ def get_route_simulation(
     route_id: int,
     current_user: User = Depends(allow_authenticated),
 ) -> RouteSimulationResponse:
-    result = RouteService().get_simulation(route_id, user_id=current_user.id)
+    result = AppFacade(current_user).route.get_simulation(route_id, user_id=current_user.id)
     return RouteSimulationResponse(**result)

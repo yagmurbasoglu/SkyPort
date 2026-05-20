@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api import deps
 from app.models.user import User
 from app.schemas.user import UserRead, UserUpdate
+from app.services.app_facade import AppFacade
 from app.services.user_service import UserService
 
 router = APIRouter()
@@ -16,7 +17,7 @@ def read_user_me(
     """
     Get current user.
     """
-    return current_user
+    return AppFacade(current_user).validate_session()
 
 
 @router.patch("/me", response_model=UserRead)
@@ -29,6 +30,6 @@ def update_user_me(
     """
     Update own user profile.
     """
-    user_svc = UserService(db)
+    user_svc = AppFacade(current_user).get_user_service(db)
     user = user_svc.update_user(current_user=current_user, user_in=user_in)
     return user

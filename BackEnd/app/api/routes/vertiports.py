@@ -4,6 +4,7 @@ from app.api.deps import RoleChecker
 from app.models.user import User
 from app.repos.vertiport_repo import list_active_vertiports
 from app.schemas.vertiport import VertiportResponse
+from app.services.app_facade import AppFacade
 
 router = APIRouter()
 allow_authenticated = RoleChecker(["expert", "passenger"])
@@ -22,7 +23,7 @@ def list_vertiports(
     ev_charging: bool = False,
     current_user: User = Depends(allow_authenticated),
 ) -> list[VertiportResponse]:
-    _ = current_user
+    _ = AppFacade(current_user).validate_session()
     return [
         VertiportResponse(**item)
         for item in list_active_vertiports(

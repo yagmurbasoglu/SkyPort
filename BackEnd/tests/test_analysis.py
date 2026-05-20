@@ -344,6 +344,8 @@ def test_calculate_results_uses_topsis_breakdown() -> None:
     assert "ideal_best" in breakdown
     assert "ideal_worst" in breakdown
     assert "topsis_closeness" in breakdown
+    assert breakdown["priority_vector"]["obstacle"] == pytest.approx(0.35)
+    assert breakdown["priority_vector"]["traffic_density"] == pytest.approx(0.0)
 
 
 def test_calculate_results_penalizes_cells_intersecting_nfz(monkeypatch) -> None:
@@ -401,6 +403,84 @@ def test_calculate_results_penalizes_cells_intersecting_nfz(monkeypatch) -> None
     assert hit_row["criteria_breakdown"]["criteria_scores"]["nfz"] == 0.0
     assert hit_row["suitability_score"] == 0.0
     assert hit_row["criteria_breakdown"]["hard_constraint_violation"] == "NFZ_INTERSECTION"
+
+
+def test_calculate_results_prefers_official_traffic_and_tuik_layers(monkeypatch) -> None:
+    service = AnalysisService()
+    monkeypatch.setattr(analysis_service, "list_nfz_geojson_in_bbox", lambda _bbox: [])
+    shared_polygon = Polygon([(28.985, 41.005), (29.005, 41.005), (29.005, 41.025), (28.985, 41.025), (28.985, 41.005)])
+    monkeypatch.setattr(analysis_service, "_cell_polygon", lambda _cell_index: shared_polygon)
+
+    rows = service._calculate_results(
+        geodata_job={
+            "bounding_box": {"west": 28.95, "east": 29.05, "south": 40.99, "north": 41.04},
+            "layer_counts": {
+                "buildings": 120,
+                "roads": 45,
+                "land_use": 8,
+                "nfz": 0,
+            },
+            "extracted_layers": {
+                "traffic_density": {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "LineString",
+                                "coordinates": [[28.99, 41.01], [29.0, 41.02]],
+                            },
+                            "properties": {
+                                "official_traffic_score": 0.88,
+                                "official_traffic_property": "density",
+                            },
+                        }
+                    ],
+                },
+                "socioeconomic": {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [[
+                                    [28.98, 41.00],
+                                    [29.01, 41.00],
+                                    [29.01, 41.03],
+                                    [28.98, 41.03],
+                                    [28.98, 41.00],
+                                ]],
+                            },
+                            "properties": {
+                                "district_name": "Bakirkoy",
+                                "official_population_score": 0.76,
+                                "official_population_total": 230000,
+                            },
+                        }
+                    ],
+                },
+            },
+        },
+        cells=["cell-official"],
+        weights={
+            "obstacle": 0.25,
+            "transport": 0.2,
+            "land_use": 0.15,
+            "nfz": 0.15,
+            "traffic_density": 0.15,
+            "socioeconomic": 0.1,
+        },
+    )
+
+    assert len(rows) == 1
+    breakdown = rows[0]["criteria_breakdown"]
+    assert breakdown["criteria_context"]["traffic_density"]["source"] == "ibb_official"
+    assert breakdown["criteria_context"]["socioeconomic"]["source"] == "tuik_official"
+    assert breakdown["criteria_scores"]["traffic_density"] == pytest.approx(0.88)
+    assert breakdown["criteria_scores"]["socioeconomic"] == pytest.approx(0.76)
+    assert breakdown["priority_vector"]["traffic_density"] == pytest.approx(0.15)
+    assert breakdown["priority_vector"]["socioeconomic"] == pytest.approx(0.1)
 
 
 def test_calculate_results_queries_nearby_nfz_outside_selected_bbox(monkeypatch) -> None:
@@ -461,6 +541,7 @@ def test_multi_alternative_total_score_uses_topsis_closeness() -> None:
     for row in rows:
         breakdown = row["criteria_breakdown"]
         assert breakdown["display_score_method"] == "TOPSIS_CLOSENESS"
+        assert breakdown["priority_vector"]["transport"] == pytest.approx(0.25)
         assert row["suitability_score"] == round(breakdown["topsis_closeness"] * 100.0, 2)
 
 

@@ -9,7 +9,7 @@ from app.schemas.geodata import (
     IngestStatusResponse,
     WindOverlayResponse,
 )
-from app.services.geodata_service import get_airspace_overlay, get_layers, get_status, ingest
+from app.services.geodata_service import get_airspace_overlay, get_layers, get_status, ingest, pause_ingest_job, resume_ingest_job
 from app.services.weather_service import WeatherService
 
 router = APIRouter(prefix="/geodata", tags=["geodata"])
@@ -25,6 +25,18 @@ async def ingest_geodata(req: IngestRequest) -> IngestResponse:
 @router.get("/ingest/{job_id}", response_model=IngestStatusResponse)
 async def get_ingest_status(job_id: str) -> IngestStatusResponse:
     result = get_status(job_id)
+    return IngestStatusResponse(**result)
+
+
+@router.post("/ingest/{job_id}/pause", response_model=IngestStatusResponse)
+async def pause_ingest(job_id: str) -> IngestStatusResponse:
+    result = pause_ingest_job(job_id)
+    return IngestStatusResponse(**result)
+
+
+@router.post("/ingest/{job_id}/resume", response_model=IngestStatusResponse)
+async def resume_ingest(job_id: str) -> IngestStatusResponse:
+    result = resume_ingest_job(job_id)
     return IngestStatusResponse(**result)
 
 

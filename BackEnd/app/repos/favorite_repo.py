@@ -1,4 +1,4 @@
-from sqlalchemy import Table, Column, BigInteger, DateTime, MetaData, text
+from sqlalchemy import Table, Column, BigInteger, DateTime, MetaData, String, text, update
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -9,15 +9,24 @@ favorites_table = Table(
     metadata,
     Column("user_id", BigInteger, primary_key=True),
     Column("vertiport_id", BigInteger, primary_key=True),
+    Column("label", String(20), nullable=False, server_default=text("'standard'")),
     Column("created_at", DateTime, server_default=text("now()"))
 )
 
-def add_favorite(db: Session, user_id: int, vertiport_id: int):
+def add_favorite(db: Session, user_id: int, vertiport_id: int, label: str = "standard"):
     try:
-        db.execute(favorites_table.insert().values(user_id=user_id, vertiport_id=vertiport_id))
+        db.execute(favorites_table.insert().values(user_id=user_id, vertiport_id=vertiport_id, label=label))
         db.commit()
     except IntegrityError:
         db.rollback()
+        db.execute(
+            update(favorites_table)
+            .where(
+                (favorites_table.c.user_id == user_id) & (favorites_table.c.vertiport_id == vertiport_id)
+            )
+            .values(label=label)
+        )
+        db.commit()
 
 def remove_favorite(db: Session, user_id: int, vertiport_id: int):
     db.execute(favorites_table.delete().where(
@@ -25,8 +34,13 @@ def remove_favorite(db: Session, user_id: int, vertiport_id: int):
     ))
     db.commit()
 
-def get_user_favorites(db: Session, user_id: int) -> list[int]:
+def get_user_favorites(db: Session, user_id: int) -> list[dict]:
     results = db.execute(favorites_table.select().where(favorites_table.c.user_id == user_id)).fetchall()
-    # The result row can be accessed via index (1 is vertiport_id) or attribute
-    # In SQLAlchemy 2.0, row has attributes matching column names
-    return [row.vertiport_id for row in results]
+    return [
+        {
+            "vertiport_id": row.vertiport_id,
+            "label": getattr(row, "label", "standard") or "standard",
+            "created_at": getattr(row, "created_at", None),
+        }
+        for row in results
+    ]

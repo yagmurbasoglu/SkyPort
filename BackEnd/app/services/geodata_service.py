@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from shapely.geometry import mapping
 
 from app.core.config import get_settings
+from app.core.runtime import runtime_state
 from app.repos import geodata_repo
 from app.repos.controlled_airspace_repo import (
     get_controlled_airspace_health,
@@ -22,6 +23,10 @@ from app.repos.nfz_repo import (
     list_nfz_in_bbox,
 )
 from app.schemas.geodata import BoundingBox, IngestRequest
+from app.services.criteria_data_service import (
+    build_tuik_socioeconomic_layer,
+    load_ibb_traffic_layer,
+)
 
 ISTANBUL_BOUNDING_BOX = BoundingBox(
     west=28.45,
@@ -169,12 +174,24 @@ def _extract_roads(bbox: BoundingBox):
     return _extract_features(major_road_tags, bbox)
 
 
+def _extract_district_boundaries(bbox: BoundingBox):
+    boundaries = _extract_features({"boundary": "administrative"}, bbox)
+    if boundaries is None or getattr(boundaries, "empty", False):
+        return boundaries
+    if "admin_level" in boundaries.columns:
+        boundaries = boundaries[boundaries["admin_level"].astype(str) == "6"]
+    if "name" in boundaries.columns:
+        boundaries = boundaries[boundaries["name"].notna()]
+    return boundaries
+
+
 def extract_osm_data(bbox: BoundingBox) -> tuple[dict, list[str]]:
     warnings: list[str] = []
     data = {
         "buildings": None,
         "roads": None,
         "land_use": None,
+        "district_boundaries": None,
         "nfz": None,
         "controlled_airspace": None,
     }
@@ -193,6 +210,11 @@ def extract_osm_data(bbox: BoundingBox) -> tuple[dict, list[str]]:
         data["land_use"] = _extract_features({"landuse": True}, bbox)
     except Exception as exc:
         warnings.append(f"Land-use layer unavailable: {exc.__class__.__name__}")
+
+    try:
+        data["district_boundaries"] = _extract_district_boundaries(bbox)
+    except Exception as exc:
+        warnings.append(f"District boundary layer unavailable: {exc.__class__.__name__}")
 
     try:
         data["nfz"] = list_nfz_in_bbox(bbox)
@@ -332,11 +354,15 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
     started_at = datetime.now(timezone.utc)
     h3_cells: list[str] = []
     try:
+        runtime_state.register_job("geodata", job_id)
         req = IngestRequest(**req_data)
+        runtime_state.wait_if_paused("geodata", job_id)
         osm_data, warnings = extract_osm_data(req.bounding_box)
+        runtime_state.wait_if_paused("geodata", job_id)
         buildings = clean_and_transform(osm_data.get("buildings"))
         roads = clean_and_transform(osm_data.get("roads"))
         land_use = clean_and_transform(osm_data.get("land_use"))
+        district_boundaries = clean_and_transform(osm_data.get("district_boundaries"))
         nfz = osm_data.get("nfz")
         controlled_airspace = osm_data.get("controlled_airspace")
 
@@ -344,6 +370,7 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
             "buildings": _feature_count(buildings),
             "roads": _feature_count(roads),
             "land_use": _feature_count(land_use),
+            "district_boundaries": _feature_count(district_boundaries),
             "nfz": _feature_count(nfz),
             "controlled_airspace": _feature_count(controlled_airspace),
         }
@@ -356,18 +383,38 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
             )
 
         try:
+            runtime_state.wait_if_paused("geodata", job_id)
             h3_cells = generate_h3_grid(req.bounding_box, req.h3_resolution)
             layer_counts["h3_cells"] = len(h3_cells)
         except Exception as exc:
             layer_counts["h3_cells"] = 0
             warnings.append(f"H3 generation failed: {exc.__class__.__name__}")
 
+        district_boundary_payload = _serialize_geo_features(district_boundaries, max_features=64)
+        traffic_density_payload, traffic_warnings = load_ibb_traffic_layer(req.bounding_box)
+        socioeconomic_payload, socioeconomic_warnings = build_tuik_socioeconomic_layer(district_boundary_payload)
+        warnings.extend(traffic_warnings)
+        warnings.extend(socioeconomic_warnings)
+        layer_counts["traffic_density"] = int(traffic_density_payload.get("total") or 0)
+        layer_counts["socioeconomic"] = int(socioeconomic_payload.get("total") or 0)
+        if (
+            get_settings().tuik_population_enabled
+            and layer_counts["district_boundaries"] == 0
+            and layer_counts["socioeconomic"] == 0
+        ):
+            warnings.append(
+                "District boundary layer is empty; TUIK socioeconomic matching could not load official district data and will fall back to heuristic mode."
+            )
+
         extracted_layers = {
             "buildings": _serialize_geo_features(buildings),
             "roads": _serialize_geo_features(roads),
             "land_use": _serialize_geo_features(land_use),
+            "district_boundaries": district_boundary_payload,
             "nfz": _serialize_layer_records(nfz),
             "controlled_airspace": _serialize_layer_records(controlled_airspace),
+            "traffic_density": traffic_density_payload,
+            "socioeconomic": socioeconomic_payload,
         }
 
         status = _derive_status(warnings=warnings, layer_counts=layer_counts)
@@ -384,6 +431,7 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
                 "h3_cells": h3_cells,
             },
         )
+        runtime_state.complete_job("geodata", job_id, state=status)
     except Exception as exc:  # pragma: no cover - defensive path
         finished_at = datetime.now(timezone.utc)
         geodata_repo.update_job(
@@ -395,8 +443,11 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
                     "buildings": 0,
                     "roads": 0,
                     "land_use": 0,
+                    "district_boundaries": 0,
                     "nfz": 0,
                     "controlled_airspace": 0,
+                    "traffic_density": 0,
+                    "socioeconomic": 0,
                     "h3_cells": 0,
                 },
                 "extracted_layers": {},
@@ -405,6 +456,7 @@ def _run_ingest_job(job_id: str, req_data: dict) -> None:
                 "h3_cells": [],
             },
         )
+        runtime_state.complete_job("geodata", job_id, state="failed")
 
 
 def _start_worker(job_id: str, req_data: dict) -> None:
@@ -434,6 +486,7 @@ def submit_ingest(req: IngestRequest) -> dict:
         "updated_at": started_at,
     }
     geodata_repo.create_job(job_id=job_id, payload=payload)
+    runtime_state.register_job("geodata", job_id)
     _start_worker(job_id=job_id, req_data=req.model_dump())
     return payload
 
@@ -445,7 +498,33 @@ def get_status(job_id: str) -> dict:
             status_code=404,
             detail={"code": "JOB_NOT_FOUND", "message": "Ingestion job not found."},
         )
+    runtime_state_value = runtime_state.get_job_state("geodata", job_id)
+    if job.get("status") == "running" and runtime_state_value == "paused":
+        job["status"] = "paused"
+        job["message"] = "Geodata ingest is paused."
     return job
+
+
+def pause_ingest_job(job_id: str) -> dict:
+    job = geodata_repo.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail={"code": "JOB_NOT_FOUND", "message": "Ingestion job not found."})
+    if job.get("status") != "running":
+        raise HTTPException(status_code=409, detail={"code": "JOB_NOT_RUNNING", "message": "Only running ingest jobs can be paused."})
+    runtime_state.pause_job("geodata", job_id)
+    geodata_repo.update_job(job_id=job_id, patch={"status": "paused"})
+    return {**get_status(job_id), "message": "Geodata ingest paused."}
+
+
+def resume_ingest_job(job_id: str) -> dict:
+    job = geodata_repo.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail={"code": "JOB_NOT_FOUND", "message": "Ingestion job not found."})
+    if job.get("status") not in {"running", "paused"}:
+        raise HTTPException(status_code=409, detail={"code": "JOB_NOT_PAUSABLE", "message": "This ingest job cannot be resumed."})
+    runtime_state.resume_job("geodata", job_id)
+    geodata_repo.update_job(job_id=job_id, patch={"status": "running"})
+    return {**get_status(job_id), "message": "Geodata ingest resumed."}
 
 
 def get_layers(job_id: str) -> dict:
@@ -457,6 +536,9 @@ def get_layers(job_id: str) -> dict:
         )
     buildings = ((job.get("extracted_layers") or {}).get("buildings") or {}).get("features") or []
     roads = ((job.get("extracted_layers") or {}).get("roads") or {}).get("features") or []
+    district_boundaries = ((job.get("extracted_layers") or {}).get("district_boundaries") or {}).get("features") or []
+    traffic_density = ((job.get("extracted_layers") or {}).get("traffic_density") or {}).get("features") or []
+    socioeconomic = ((job.get("extracted_layers") or {}).get("socioeconomic") or {}).get("features") or []
     return {
         "job_id": job["job_id"],
         "layer_counts": job.get("layer_counts") or {},
@@ -467,6 +549,18 @@ def get_layers(job_id: str) -> dict:
         "roads": {
             "type": "FeatureCollection",
             "features": roads,
+        },
+        "district_boundaries": {
+            "type": "FeatureCollection",
+            "features": district_boundaries,
+        },
+        "traffic_density": {
+            "type": "FeatureCollection",
+            "features": traffic_density,
+        },
+        "socioeconomic": {
+            "type": "FeatureCollection",
+            "features": socioeconomic,
         },
     }
 

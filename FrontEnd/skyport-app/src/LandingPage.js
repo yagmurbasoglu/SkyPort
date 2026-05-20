@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AltRouteIcon from '@mui/icons-material/AltRoute';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
-import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import HexagonIcon from '@mui/icons-material/Hexagon';
 import RadarIcon from '@mui/icons-material/Radar';
 import BlockIcon from '@mui/icons-material/Block';
@@ -163,7 +162,7 @@ const LandingPage = () => {
       <nav className="landing-nav">
         <button className="brand" onClick={() => navigate('/')} aria-label="SkyPort home">
           <span className="brand-mark">
-            <FlightTakeoffIcon fontSize="small" />
+            <img src="/skyport-logo.png" alt="SkyPort Logo" />
           </span>
           <span>SkyPort</span>
         </button>
@@ -475,14 +474,22 @@ const landingCss = `
 .brand span { font-weight: 900; font-size: 1.2rem; letter-spacing: 1px; }
 .brand span span { color: #e17b8f; }
 .brand-mark {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   border-radius: 8px;
   color: #fff;
-  background: #e17b8f;
-  box-shadow: 0 0 20px rgba(225, 123, 143, 0.3);
+  background: transparent;
+  overflow: hidden;
+}
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  mix-blend-mode: lighten;
+  filter: drop-shadow(0 0 8px rgba(182, 95, 112, 0.5));
 }
 .nav-actions { display: flex; align-items: center; gap: 12px; }
 .nav-link, .nav-button {

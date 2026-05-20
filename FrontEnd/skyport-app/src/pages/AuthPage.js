@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Paper, Typography, TextField, Button, IconButton, InputAdornment, Alert,
 } from '@mui/material';
-import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
@@ -180,19 +179,15 @@ const AuthPage = ({ defaultMode = 'register', defaultRole = null }) => {
         {/* Logo */}
         <Box
           onClick={() => navigate('/')}
-          sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 4, cursor: 'pointer' }}
+          sx={{ display: 'flex', alignItems: 'center', mb: 3, cursor: 'pointer' }}
         >
-          <Box sx={{
-            width: 36, height: 36,
-            background: 'linear-gradient(135deg, #b65f70, #1a1a2e)',
-            borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 20px rgba(182,95,112,0.4)',
-          }}>
-            <FlightTakeoffIcon sx={{ color: '#fff', fontSize: 20 }} />
-          </Box>
-          <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', letterSpacing: '1px', color: '#ffffff', textTransform: 'uppercase' }}>
-            SKY<span style={{ color: '#b65f70' }}>PORT</span>
-          </Typography>
+          <Box component="img" src="/skyport-logo.png" alt="SkyPort Logo" sx={{
+            height: 120, // Very large for the Auth page!
+            width: 'auto',
+            mixBlendMode: 'lighten', // Removes black background
+            filter: 'drop-shadow(0 0 15px rgba(182,95,112,0.6))',
+            objectFit: 'contain',
+          }} />
         </Box>
 
         <Paper sx={authContainerSx}>

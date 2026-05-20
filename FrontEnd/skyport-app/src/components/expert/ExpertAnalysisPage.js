@@ -32,7 +32,6 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DescriptionIcon from '@mui/icons-material/Description';
 import DownloadIcon from '@mui/icons-material/Download';
 import DirectionsTransitIcon from '@mui/icons-material/DirectionsTransit';
-import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import FmdGoodIcon from '@mui/icons-material/FmdGood';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import LogoutIcon from '@mui/icons-material/Logout';
@@ -2121,12 +2120,21 @@ const ExpertAnalysisPage = () => {
 
       <Paper sx={{ ...panelSx, position: 'absolute', top: 16, left: 16, right: 16, zIndex: 20, px: 2, py: 1.3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.4 }}>
-          <Box sx={{ width: 36, height: 36, borderRadius: '8px', display: 'grid', placeItems: 'center', bgcolor: 'rgba(182,95,112,0.14)', color: '#e17b8f' }}>
-            <FlightTakeoffIcon fontSize="small" />
-          </Box>
+          <Box
+            component="img"
+            src="/skyport-logo.png"
+            alt="SkyPort"
+            sx={{
+              height: 36,
+              width: 'auto',
+              mixBlendMode: 'lighten',
+              filter: 'drop-shadow(0 0 8px rgba(182,95,112,0.5))',
+              objectFit: 'contain',
+            }}
+          />
           <Box sx={{ minWidth: 0 }}>
             <Typography sx={{ color: '#e2e8f0', fontWeight: 800, fontSize: '1rem' }}>SkyPort Expert Analysis</Typography>
-            <Typography sx={{ color: '#94a3b8', fontSize: '0.75rem' }}>{user?.full_name || 'Expert'} · AHP/TOPSIS suitability workflow</Typography>
+            <Typography sx={{ color: '#94a3b8', fontSize: '0.75rem' }}>{user?.full_name || 'Expert'} - AHP/TOPSIS suitability workflow</Typography>
           </Box>
           <Box sx={{ flex: 1 }} />
           <Tooltip title="Reset to Istanbul">

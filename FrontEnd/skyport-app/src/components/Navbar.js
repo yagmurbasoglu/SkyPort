@@ -1,7 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Alert, Box, Typography, Button, Chip, IconButton, Tooltip, Modal, Paper, Stack, TextField } from '@mui/material';
-import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import HomeIcon from '@mui/icons-material/Home';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
@@ -66,35 +65,22 @@ const Navbar = () => {
     >
       {/* Logo */}
       <Box
-        sx={{ display: 'flex', alignItems: 'center', gap: 1.5, cursor: 'pointer' }}
+        sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }}
         onClick={() => navigate('/')}
       >
         <Box
+          component="img"
+          src="/skyport-logo.png"
+          alt="SkyPort Logo"
           sx={{
-            width: 32,
-            height: 32,
-            background: 'linear-gradient(135deg, #b65f70, #1d4ed8)',
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 0 16px rgba(182,95,112,0.4)',
+            height: 48,
+            width: 'auto',
+            mixBlendMode: 'lighten', // Removes black background
+            filter: 'drop-shadow(0 0 10px rgba(182,95,112,0.5))',
+            objectFit: 'contain',
+            mr: 1,
           }}
-        >
-          <FlightTakeoffIcon sx={{ fontSize: 18, color: '#fff' }} />
-        </Box>
-        <Typography
-          sx={{
-            fontWeight: 800,
-            fontSize: '1.1rem',
-            letterSpacing: '-0.5px',
-            background: 'linear-gradient(135deg, #e2e8f0, #94a3b8)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}
-        >
-          SKY<span style={{ color: '#b65f70', WebkitTextFillColor: '#b65f70' }}>PORT</span>
-        </Typography>
+        />
         <Chip
           label="Istanbul UAM"
           size="small"
@@ -184,7 +170,7 @@ const Navbar = () => {
             <Stack spacing={1.4}>
               <Typography sx={{ color: '#e2e8f0', fontWeight: 800 }}>Profile Settings</Typography>
               <Typography sx={{ color: '#94a3b8', fontSize: '0.75rem' }}>
-                {user?.email} · {user?.role}
+                {user?.email} - {user?.role}
               </Typography>
               {!!profileMessage && <Alert severity="success" sx={{ fontSize: '0.75rem' }}>{profileMessage}</Alert>}
               {!!profileError && <Alert severity="error" sx={{ fontSize: '0.75rem' }}>{profileError}</Alert>}

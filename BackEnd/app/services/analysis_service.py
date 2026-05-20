@@ -578,12 +578,12 @@ def _write_analysis_pdf(
         content_parts.append(_pdf_text(52, y, line, size=10, color=(0.82, 0.87, 0.93)))
         y -= 16
 
-    weight_y = 594
-    for key in CRITERIA_ORDER:
+    for i, key in enumerate(CRITERIA_ORDER):
         label = key.replace("_", " ").title()
         value = f"{round(float(weights.get(key, 0.0)) * 100, 1)}%"
-        content_parts.append(_pdf_text(322, weight_y, f"{label}: {value}", size=10, color=(0.82, 0.87, 0.93)))
-        weight_y -= 18
+        col_x = 322 if i < 3 else 450
+        row_y = 594 - (i % 3) * 24
+        content_parts.append(_pdf_text(col_x, row_y, f"{label}: {value}", size=10, color=(0.82, 0.87, 0.93)))
 
     content_parts.extend([
         _pdf_rect(36, 110, 540, 386, fill=(0.06, 0.10, 0.18)),

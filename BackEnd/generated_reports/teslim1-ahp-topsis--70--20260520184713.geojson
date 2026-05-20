@@ -1,0 +1,491 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              29.16204645580248,
+              41.02920614570465
+            ],
+            [
+              29.15928815120634,
+              41.024700146609064
+            ],
+            [
+              29.16323877641448,
+              41.020597625400285
+            ],
+            [
+              29.16994739203882,
+              41.02100096350804
+            ],
+            [
+              29.172706046975836,
+              41.025506791447775
+            ],
+            [
+              29.168755736024938,
+              41.02960945244053
+            ],
+            [
+              29.16204645580248,
+              41.02920614570465
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "analysis_id": 70,
+        "cell_index": "881ec914adfffff",
+        "suitability_score": 75.22,
+        "score_class": "moderate",
+        "criteria_breakdown": {
+          "method": "AHP_TOPSIS",
+          "display_score_method": "TOPSIS_CLOSENESS",
+          "criteria_order": [
+            "obstacle",
+            "transport",
+            "land_use",
+            "nfz",
+            "traffic_density",
+            "socioeconomic"
+          ],
+          "criteria_direction": {
+            "obstacle": "cost",
+            "transport": "benefit",
+            "land_use": "benefit",
+            "nfz": "benefit",
+            "traffic_density": "benefit",
+            "socioeconomic": "benefit"
+          },
+          "priority_vector": {
+            "obstacle": 0.22,
+            "transport": 0.18,
+            "land_use": 0.14,
+            "nfz": 0.16,
+            "traffic_density": 0.16,
+            "socioeconomic": 0.14
+          },
+          "criteria_scores": {
+            "obstacle": 0.2564133432941542,
+            "transport": 0.46698817314277125,
+            "land_use": 0.4741503744931311,
+            "nfz": 1.0,
+            "traffic_density": 0.24375,
+            "socioeconomic": 0.6353052291938204
+          },
+          "criteria_context": {
+            "obstacle": {
+              "building_signal_count": 725
+            },
+            "transport": {
+              "transport_score": 0.467,
+              "sampled_road_count": 17
+            },
+            "land_use": {
+              "land_use_score": 0.474,
+              "sampled_land_use_count": 10
+            },
+            "nfz": {
+              "intersects_nfz": false,
+              "nfz_intersection_count": 0,
+              "nfz_overlap_ratio": 0.0,
+              "distance_to_nfz_km": null
+            },
+            "traffic_density": {
+              "source": "ibb_official",
+              "matched_feature_count": 8,
+              "official_property": "V",
+              "traffic_density_score": 0.244
+            },
+            "socioeconomic": {
+              "source": "tuik_official",
+              "matched_districts": [
+                "ÇEKMEKÖY",
+                "ÜMRANİYE"
+              ],
+              "matched_feature_count": 2,
+              "population_metric": "district_total_population",
+              "population_total_average": 522436.0,
+              "socioeconomic_score": 0.635
+            }
+          },
+          "decision_values": {
+            "obstacle": 0.7435866567058458,
+            "transport": 0.46698817314277125,
+            "land_use": 0.4741503744931311,
+            "nfz": 1.0,
+            "traffic_density": 0.24375,
+            "socioeconomic": 0.6353052291938204
+          },
+          "normalized_values": {
+            "obstacle": 0.596929,
+            "transport": 0.701059,
+            "land_use": 0.556126,
+            "nfz": 0.57735,
+            "traffic_density": 0.562822,
+            "socioeconomic": 0.635802
+          },
+          "weighted_values": {
+            "obstacle": 0.131324,
+            "transport": 0.126191,
+            "land_use": 0.077858,
+            "nfz": 0.092376,
+            "traffic_density": 0.090051,
+            "socioeconomic": 0.089012
+          },
+          "ideal_best": {
+            "obstacle": 0.116454,
+            "transport": 0.126191,
+            "land_use": 0.084072,
+            "nfz": 0.092376,
+            "traffic_density": 0.095551,
+            "socioeconomic": 0.098147
+          },
+          "ideal_worst": {
+            "obstacle": 0.132637,
+            "transport": 0.087174,
+            "land_use": 0.077858,
+            "nfz": 0.092376,
+            "traffic_density": 0.090051,
+            "socioeconomic": 0.045211
+          },
+          "distance_to_best": 0.019325,
+          "distance_to_worst": 0.058674,
+          "weighted_priority_score": 0.494793,
+          "topsis_closeness": 0.752242,
+          "hard_constraint_violation": null
+        },
+        "mcdm_method": "AHP_TOPSIS"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              29.15138568753372,
+              41.03290451063017
+            ],
+            [
+              29.14862773356361,
+              41.02839834046491
+            ],
+            [
+              29.152579122362244,
+              41.02429622837672
+            ],
+            [
+              29.15928815120634,
+              41.024700146609064
+            ],
+            [
+              29.16204645580248,
+              41.02920614570465
+            ],
+            [
+              29.1580953810058,
+              41.0333083976425
+            ],
+            [
+              29.15138568753372,
+              41.03290451063017
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "analysis_id": 70,
+        "cell_index": "881ec915dbfffff",
+        "suitability_score": 55.69,
+        "score_class": "low",
+        "criteria_breakdown": {
+          "method": "AHP_TOPSIS",
+          "display_score_method": "TOPSIS_CLOSENESS",
+          "criteria_order": [
+            "obstacle",
+            "transport",
+            "land_use",
+            "nfz",
+            "traffic_density",
+            "socioeconomic"
+          ],
+          "criteria_direction": {
+            "obstacle": "cost",
+            "transport": "benefit",
+            "land_use": "benefit",
+            "nfz": "benefit",
+            "traffic_density": "benefit",
+            "socioeconomic": "benefit"
+          },
+          "priority_vector": {
+            "obstacle": 0.22,
+            "transport": 0.18,
+            "land_use": 0.14,
+            "nfz": 0.16,
+            "traffic_density": 0.16,
+            "socioeconomic": 0.14
+          },
+          "criteria_scores": {
+            "obstacle": 0.24898284225468123,
+            "transport": 0.32260039712362926,
+            "land_use": 0.48985749605806955,
+            "nfz": 1.0,
+            "traffic_density": 0.25863636363636366,
+            "socioeconomic": 0.7005022456994379
+          },
+          "criteria_context": {
+            "obstacle": {
+              "building_signal_count": 725
+            },
+            "transport": {
+              "transport_score": 0.323,
+              "sampled_road_count": 17
+            },
+            "land_use": {
+              "land_use_score": 0.49,
+              "sampled_land_use_count": 10
+            },
+            "nfz": {
+              "intersects_nfz": false,
+              "nfz_intersection_count": 0,
+              "nfz_overlap_ratio": 0.0,
+              "distance_to_nfz_km": null
+            },
+            "traffic_density": {
+              "source": "ibb_official",
+              "matched_feature_count": 22,
+              "official_property": "V",
+              "traffic_density_score": 0.259
+            },
+            "socioeconomic": {
+              "source": "tuik_official",
+              "matched_districts": [
+                "ÇEKMEKÖY",
+                "ÜMRANİYE"
+              ],
+              "matched_feature_count": 2,
+              "population_metric": "district_total_population",
+              "population_total_average": 522436.0,
+              "socioeconomic_score": 0.701
+            }
+          },
+          "decision_values": {
+            "obstacle": 0.7510171577453187,
+            "transport": 0.32260039712362926,
+            "land_use": 0.48985749605806955,
+            "nfz": 1.0,
+            "traffic_density": 0.25863636363636366,
+            "socioeconomic": 0.7005022456994379
+          },
+          "normalized_values": {
+            "obstacle": 0.602894,
+            "transport": 0.484299,
+            "land_use": 0.574548,
+            "nfz": 0.57735,
+            "traffic_density": 0.597195,
+            "socioeconomic": 0.70105
+          },
+          "weighted_values": {
+            "obstacle": 0.132637,
+            "transport": 0.087174,
+            "land_use": 0.080437,
+            "nfz": 0.092376,
+            "traffic_density": 0.095551,
+            "socioeconomic": 0.098147
+          },
+          "ideal_best": {
+            "obstacle": 0.116454,
+            "transport": 0.126191,
+            "land_use": 0.084072,
+            "nfz": 0.092376,
+            "traffic_density": 0.095551,
+            "socioeconomic": 0.098147
+          },
+          "ideal_worst": {
+            "obstacle": 0.132637,
+            "transport": 0.087174,
+            "land_use": 0.077858,
+            "nfz": 0.092376,
+            "traffic_density": 0.090051,
+            "socioeconomic": 0.045211
+          },
+          "distance_to_best": 0.042396,
+          "distance_to_worst": 0.053284,
+          "weighted_priority_score": 0.480876,
+          "topsis_closeness": 0.556897,
+          "hard_constraint_violation": null
+        },
+        "mcdm_method": "AHP_TOPSIS"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              29.1608539006409,
+              41.03781409609216
+            ],
+            [
+              29.1580953810058,
+              41.0333083976425
+            ],
+            [
+              29.16204645580248,
+              41.02920614570465
+            ],
+            [
+              29.168755736024938,
+              41.02960945244053
+            ],
+            [
+              29.171514606097407,
+              41.0341149797645
+            ],
+            [
+              29.167563845587363,
+              41.03821737148321
+            ],
+            [
+              29.1608539006409,
+              41.03781409609216
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "analysis_id": 70,
+        "cell_index": "881ec914e7fffff",
+        "suitability_score": 23.24,
+        "score_class": "unsuitable",
+        "criteria_breakdown": {
+          "method": "AHP_TOPSIS",
+          "display_score_method": "TOPSIS_CLOSENESS",
+          "criteria_order": [
+            "obstacle",
+            "transport",
+            "land_use",
+            "nfz",
+            "traffic_density",
+            "socioeconomic"
+          ],
+          "criteria_direction": {
+            "obstacle": "cost",
+            "transport": "benefit",
+            "land_use": "benefit",
+            "nfz": "benefit",
+            "traffic_density": "benefit",
+            "socioeconomic": "benefit"
+          },
+          "priority_vector": {
+            "obstacle": 0.22,
+            "transport": 0.18,
+            "land_use": 0.14,
+            "nfz": 0.16,
+            "traffic_density": 0.16,
+            "socioeconomic": 0.14
+          },
+          "criteria_scores": {
+            "obstacle": 0.3406147953450248,
+            "transport": 0.34866044282649183,
+            "land_use": 0.5119964947858817,
+            "nfz": 1.0,
+            "traffic_density": 0.2475,
+            "socioeconomic": 0.32268059780216213
+          },
+          "criteria_context": {
+            "obstacle": {
+              "building_signal_count": 725
+            },
+            "transport": {
+              "transport_score": 0.349,
+              "sampled_road_count": 17
+            },
+            "land_use": {
+              "land_use_score": 0.512,
+              "sampled_land_use_count": 10
+            },
+            "nfz": {
+              "intersects_nfz": false,
+              "nfz_intersection_count": 0,
+              "nfz_overlap_ratio": 0.0,
+              "distance_to_nfz_km": null
+            },
+            "traffic_density": {
+              "source": "ibb_official",
+              "matched_feature_count": 4,
+              "official_property": "V",
+              "traffic_density_score": 0.247
+            },
+            "socioeconomic": {
+              "source": "tuik_official",
+              "matched_districts": [
+                "ÇEKMEKÖY",
+                "ÜMRANİYE"
+              ],
+              "matched_feature_count": 2,
+              "population_metric": "district_total_population",
+              "population_total_average": 522436.0,
+              "socioeconomic_score": 0.323
+            }
+          },
+          "decision_values": {
+            "obstacle": 0.6593852046549752,
+            "transport": 0.34866044282649183,
+            "land_use": 0.5119964947858817,
+            "nfz": 1.0,
+            "traffic_density": 0.2475,
+            "socioeconomic": 0.32268059780216213
+          },
+          "normalized_values": {
+            "obstacle": 0.529334,
+            "transport": 0.523422,
+            "land_use": 0.600515,
+            "nfz": 0.57735,
+            "traffic_density": 0.571481,
+            "socioeconomic": 0.322933
+          },
+          "weighted_values": {
+            "obstacle": 0.116454,
+            "transport": 0.094216,
+            "land_use": 0.084072,
+            "nfz": 0.092376,
+            "traffic_density": 0.091437,
+            "socioeconomic": 0.045211
+          },
+          "ideal_best": {
+            "obstacle": 0.116454,
+            "transport": 0.126191,
+            "land_use": 0.084072,
+            "nfz": 0.092376,
+            "traffic_density": 0.095551,
+            "socioeconomic": 0.098147
+          },
+          "ideal_worst": {
+            "obstacle": 0.132637,
+            "transport": 0.087174,
+            "land_use": 0.077858,
+            "nfz": 0.092376,
+            "traffic_density": 0.090051,
+            "socioeconomic": 0.045211
+          },
+          "distance_to_best": 0.06198,
+          "distance_to_worst": 0.018762,
+          "weighted_priority_score": 0.454149,
+          "topsis_closeness": 0.232371,
+          "hard_constraint_violation": null
+        },
+        "mcdm_method": "AHP_TOPSIS"
+      }
+    }
+  ]
+}

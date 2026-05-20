@@ -618,7 +618,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
               <StatBox icon={<StraightenIcon sx={{ fontSize: 14, color: '#60a5fa' }} />} label="Distance" value={`${route.distance_km} km`} />
               <StatBox icon={<AccessTimeIcon sx={{ fontSize: 14, color: '#34d399' }} />} label="Duration" value={`${route.duration_min} min`} />
-              <StatBox icon={<PaymentIcon sx={{ fontSize: 14, color: '#f59e0b' }} />} label="Price" value={`${route.price_tl} TL`} />
+              <StatBox icon={<PaymentIcon sx={{ fontSize: 14, color: '#f59e0b' }} />} label="Price" value={`TL ${route.price_tl}`} />
             </Box>
 
             {route.warnings?.length > 0 && (
@@ -852,7 +852,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
                 <TicketMetric label="Departure Time" value={departureTime || '-'} />
                 <TicketMetric label="Passengers" value={String(passengerCount)} />
                 <TicketMetric label="Duration" value={`${route?.duration_min ?? '-'} min`} />
-                <TicketMetric label="Price" value={`₺${route?.price_tl ?? '-'}`} />
+                <TicketMetric label="Price" value={`TL ${route?.price_tl ?? '-'}`} />
                 <TicketMetric label="Booking Rule" value={`Max ${MAX_PASSENGERS} pax`} />
               </Box>
 

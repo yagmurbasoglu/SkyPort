@@ -45,8 +45,8 @@ const DEFAULT_FILTERS = {
 const CENTER = { lat: 41.0369, lng: 28.985 };
 const MOCK_REVIEW_STORAGE_KEY = 'skyport_mock_vertiport_reviews';
 const REVIEW_QUESTIONS = [
-  { key: 'satisfaction_rating', label: 'Memnuniyet Orani' },
-  { key: 'comfort_rating', label: 'Boarding Konforu' },
+  { key: 'satisfaction_rating', label: 'Satisfaction Rate' },
+  { key: 'comfort_rating', label: 'Boarding Comfort' },
 ];
 
 const buildEmptyReviewDraft = () => ({
@@ -999,7 +999,7 @@ const PastFlightsSidebar = ({ upcomingFlights, pastFlights, onClear, onCancelUpc
 
             <Box sx={{ mt: 1.2, pt: 1.1, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
               <Typography sx={{ fontSize: '0.64rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', mb: 0.7 }}>
-                Degerlendir
+                Rate Flight
               </Typography>
               {hasSavedReview ? (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.45 }}>

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import {
@@ -73,15 +73,6 @@ const routePointAt = (coordinates, progress) => {
     start[0] + (end[0] - start[0]) * local,
     start[1] + (end[1] - start[1]) * local,
   ];
-};
-
-const routeStopProgress = (route) => {
-  if (route?.stop_progress !== null && route?.stop_progress !== undefined) {
-    return Math.max(0.04, Math.min(0.998, Number(route.stop_progress)));
-  }
-  const blocker = route?.conflicts?.find((conflict) => conflict.severity === 'blocker' && conflict.route_progress !== null && conflict.route_progress !== undefined);
-  if (!blocker) return route?.is_safe === false ? 0.58 : 1;
-  return Math.max(0.04, Math.min(0.998, Number(blocker.route_progress)));
 };
 
 const routeStopPoint = (route) => {
@@ -164,7 +155,7 @@ const PassengerMapView = ({
   const [mapControlsOpen, setMapControlsOpen] = useState(false);
 
   // ── Fetch Airspace Data ────────────────────────────────────────────────────
-  const fetchAirspace = (bounds) => {
+  const fetchAirspace = useCallback((bounds) => {
     if (!map.current) return;
     const source = map.current.getSource('passenger-airspace-overlay');
     if (!source) return;
@@ -177,9 +168,9 @@ const PassengerMapView = ({
       .catch((err) => {
         console.error('Failed to fetch airspace data:', err);
       });
-  };
+  }, []);
 
-  const updateAirspaceFromMap = () => {
+  const updateAirspaceFromMap = useCallback(() => {
     if (!map.current) return;
     const b = map.current.getBounds();
     fetchAirspace({
@@ -188,7 +179,7 @@ const PassengerMapView = ({
       south: b.getSouth(),
       north: b.getNorth(),
     });
-  };
+  }, [fetchAirspace]);
 
   // ── Initialize map ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -313,13 +304,13 @@ const PassengerMapView = ({
       if (aircraftMarkerRef.current) aircraftMarkerRef.current.remove();
       if (map.current) { map.current.remove(); map.current = null; }
     };
-  }, []);
+  }, [updateAirspaceFromMap]);
 
   // ── Initial Airspace Fetch ──────────────────────────────────────────────
   useEffect(() => {
     if (!mapLoaded || !map.current) return;
     fetchAirspace(INITIAL_AIRSPACE_BOUNDS);
-  }, [mapLoaded]);
+  }, [fetchAirspace, mapLoaded]);
 
   useEffect(() => {
     if (!mapLoaded || !map.current) return;
@@ -387,7 +378,7 @@ const PassengerMapView = ({
           <div style="font-size: 0.75rem; font-weight: 700; color: #e17b8f; margin-bottom: 4px; border-bottom: 1px solid rgba(225,123,143,0.2); padding-bottom: 4px;">${vp.name}</div>
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.65rem; color: #94a3b8;">Score: <b style="color: ${scoreColor(vp.suitabilityScore)}">${vp.suitabilityScore}</b></span>
-            <span style="font-size: 0.65rem; font-weight: 700; color: #cbd5e1;">${vp.pricePerKm} ₺/km</span>
+            <span style="font-size: 0.65rem; font-weight: 700; color: #cbd5e1;">TL ${vp.pricePerKm}/km</span>
           </div>
         </div>
       `);

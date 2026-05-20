@@ -14,6 +14,7 @@ const AuthContext = createContext(null);
 
 const STORAGE_KEY = 'skyport_user';
 const TOKEN_KEY = 'skyport_token';
+const AUTH_ENDPOINTS = ['/api/auth/login', '/api/auth/register', '/api/auth/check-email'];
 
 // On initial load, attach token if it exists
 const token = localStorage.getItem(TOKEN_KEY);
@@ -25,7 +26,11 @@ if (token) {
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const requestUrl = String(error.config?.url || '');
+    const isAuthRequest = AUTH_ENDPOINTS.some((endpoint) => requestUrl.includes(endpoint));
+    const hasStoredToken = Boolean(localStorage.getItem(TOKEN_KEY));
+
+    if (error.response?.status === 401 && hasStoredToken && !isAuthRequest) {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(TOKEN_KEY);
       delete axios.defaults.headers.common['Authorization'];
@@ -90,6 +95,17 @@ export const AuthProvider = ({ children }) => {
     return login({ email, password });
   };
 
+  const updateProfile = async ({ full_name, password }) => {
+    const payload = {};
+    if (typeof full_name === 'string') payload.full_name = full_name.trim();
+    if (password) payload.password = password;
+    const result = await axios.patch('/api/users/me', payload);
+    const updatedUser = result.data;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser));
+    setUser(updatedUser);
+    return updatedUser;
+  };
+
   const logout = () => {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(TOKEN_KEY);
@@ -99,7 +115,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn, role, login, register, logout, checkEmailAvailability }}>
+    <AuthContext.Provider value={{ user, isLoggedIn, role, login, register, logout, checkEmailAvailability, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

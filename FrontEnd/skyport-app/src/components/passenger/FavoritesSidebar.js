@@ -6,7 +6,10 @@ import MyLocationIcon from '@mui/icons-material/MyLocation';
 import { FEATURE_ICONS } from '../../mock/vertiports';
 
 const FavoritesSidebar = ({ favorites, vertiports = [], onToggle, onFlyTo }) => {
-  const favoriteVertiports = vertiports.filter((vp) => favorites.includes(vp.id));
+  const favoriteMeta = new Map((favorites || []).map((item) => [item.vertiport_id, item]));
+  const favoriteVertiports = vertiports
+    .filter((vp) => favoriteMeta.has(vp.id))
+    .map((vp) => ({ ...vp, favoriteLabel: favoriteMeta.get(vp.id)?.label || 'standard' }));
 
   return (
     <Paper
@@ -44,6 +47,11 @@ const FavoritesSidebar = ({ favorites, vertiports = [], onToggle, onFlyTo }) => 
           }}
         />
       </Box>
+      <Box sx={{ px: 2, pt: 1.1, pb: 0.6, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+        <Typography sx={{ fontSize: '0.68rem', color: '#64748b', lineHeight: 1.5 }}>
+          Home marks a regular takeoff point. Work marks a frequent destination for faster recognition later.
+        </Typography>
+      </Box>
 
       {/* List */}
       <Box sx={{ overflowY: 'auto', flex: 1, py: 1 }}>
@@ -54,7 +62,7 @@ const FavoritesSidebar = ({ favorites, vertiports = [], onToggle, onFlyTo }) => 
               No favorites yet.
             </Typography>
             <Typography sx={{ fontSize: '0.7rem', color: '#1e2d4a', mt: 0.5 }}>
-              Click ★ on a vertiport to save it here.
+              Click the star on a vertiport to save it here.
             </Typography>
           </Box>
         ) : (
@@ -87,6 +95,19 @@ const FavoritesSidebar = ({ favorites, vertiports = [], onToggle, onFlyTo }) => 
                   <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, color: '#cbd5e1', lineHeight: 1.3, mb: 0.4 }} noWrap>
                     {vp.name}
                   </Typography>
+                  {vp.favoriteLabel && vp.favoriteLabel !== 'standard' && (
+                    <Chip
+                      label={vp.favoriteLabel === 'home' ? 'Home' : 'Work'}
+                      size="small"
+                      sx={{
+                        mb: 0.45,
+                        height: 18,
+                        fontSize: '0.6rem',
+                        bgcolor: vp.favoriteLabel === 'home' ? 'rgba(96,165,250,0.14)' : 'rgba(52,211,153,0.14)',
+                        color: vp.favoriteLabel === 'home' ? '#93c5fd' : '#6ee7b7',
+                      }}
+                    />
+                  )}
                   {vp.reviewCount > 0 && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mb: 0.45 }}>
                       <ReviewStars averageRating={vp.averageRating} />
@@ -118,13 +139,13 @@ const FavoritesSidebar = ({ favorites, vertiports = [], onToggle, onFlyTo }) => 
                       <MyLocationIcon sx={{ fontSize: 14 }} />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Remove from favorites">
-                    <IconButton
-                      size="small"
-                      onClick={() => onToggle(vp.id)}
-                      sx={{ width: 24, height: 24, color: '#f59e0b', '&:hover': { color: '#ef4444' } }}
-                    >
-                      <StarIcon sx={{ fontSize: 14 }} />
+                    <Tooltip title="Remove from favorites">
+                      <IconButton
+                        size="small"
+                        onClick={() => onToggle(vp.id, vp.favoriteLabel || 'standard')}
+                        sx={{ width: 24, height: 24, color: '#f59e0b', '&:hover': { color: '#ef4444' } }}
+                      >
+                        <StarIcon sx={{ fontSize: 14 }} />
                     </IconButton>
                   </Tooltip>
                 </Box>
@@ -166,3 +187,4 @@ const ReviewStars = ({ averageRating = 0 }) => {
 };
 
 export default FavoritesSidebar;
+

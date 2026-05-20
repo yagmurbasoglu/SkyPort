@@ -30,6 +30,7 @@ import FavoritesSidebar from '../components/passenger/FavoritesSidebar';
 import RoutePlanner from '../components/passenger/RoutePlanner';
 import { FEATURE_ICONS, FEATURE_LABELS, MOCK_VERTIPORTS } from '../mock/vertiports';
 import { useAuth } from '../context/AuthContext';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const DEFAULT_FILTERS = {
   maxDistance: 40,
@@ -152,6 +153,23 @@ const LEGACY_FLIGHT_HISTORY_KEY = 'skyport_flight_history';
 const buildFlightHistoryStorageKey = (user) => (
   user?.id ? `skyport_flight_history_user_${user.id}` : 'skyport_flight_history_guest'
 );
+const normalizeFavoriteItems = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => {
+      if (Number.isInteger(item)) {
+        return { vertiport_id: item, label: 'standard' };
+      }
+      if (item && item.vertiport_id !== undefined && item.vertiport_id !== null) {
+        return {
+          vertiport_id: Number(item.vertiport_id),
+          label: item.label || 'standard',
+        };
+      }
+      return null;
+    })
+    .filter(Boolean);
+};
 
 const sidebarScrollSx = {
   scrollbarWidth: 'thin',
@@ -251,11 +269,12 @@ const PassengerPage = () => {
 
   const [favorites, setFavorites] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('skyport_favorites')) || [];
+      return normalizeFavoriteItems(JSON.parse(localStorage.getItem('skyport_favorites')) || []);
     } catch {
       return [];
     }
   });
+  const favoriteIds = useMemo(() => favorites.map((item) => item.vertiport_id), [favorites]);
 
   useEffect(() => {
     try {
@@ -280,10 +299,9 @@ const PassengerPage = () => {
   useEffect(() => {
     axios.get('/api/favorites')
       .then((response) => {
-        if (Array.isArray(response.data)) {
-          setFavorites(response.data);
-          localStorage.setItem('skyport_favorites', JSON.stringify(response.data));
-        }
+        const normalized = normalizeFavoriteItems(response.data);
+        setFavorites(normalized);
+        localStorage.setItem('skyport_favorites', JSON.stringify(normalized));
       })
       .catch(() => {
         // Fall back to localStorage when backend is unavailable.
@@ -317,17 +335,26 @@ const PassengerPage = () => {
     };
   }, [user?.id, reviewRefreshKey]);
 
-  const toggleFavorite = async (id) => {
-    const isFav = favorites.includes(id);
-    const next = isFav ? favorites.filter((f) => f !== id) : [...favorites, id];
+  const toggleFavorite = async (id, label = 'standard') => {
+    const current = favorites.find((item) => item.vertiport_id === id);
+    const isFav = Boolean(current);
+    const next = isFav
+      ? (current.label === label
+        ? favorites.filter((item) => item.vertiport_id !== id)
+        : favorites.map((item) => (item.vertiport_id === id ? { ...item, label } : item)))
+      : [...favorites, { vertiport_id: id, label }];
     setFavorites(next);
     localStorage.setItem('skyport_favorites', JSON.stringify(next));
 
     try {
       if (isFav) {
-        await axios.delete(`/api/favorites/${id}`);
+        if (current?.label === label) {
+          await axios.delete(`/api/favorites/${id}`);
+        } else {
+          await axios.post(`/api/favorites/${id}`, { label });
+        }
       } else {
-        await axios.post(`/api/favorites/${id}`);
+        await axios.post(`/api/favorites/${id}`, { label });
       }
     } catch {
       setFavorites(favorites);
@@ -545,7 +572,7 @@ const PassengerPage = () => {
       }
       handleCloseReview();
     } catch (error) {
-      setReviewError(error.response?.data?.message || error.response?.data?.detail || error.message);
+      setReviewError(getApiErrorMessage(error));
     } finally {
       setReviewSubmitting(false);
     }
@@ -719,8 +746,10 @@ const PassengerPage = () => {
             {selectedVertiport && (
               <VertiportDetailCard
                 vp={selectedVertiport}
-                isFavorite={favorites.includes(selectedVertiport.id)}
+                isFavorite={favoriteIds.includes(selectedVertiport.id)}
+                favoriteLabel={favorites.find((item) => item.vertiport_id === selectedVertiport.id)?.label || 'standard'}
                 onToggleFavorite={() => toggleFavorite(selectedVertiport.id)}
+                onSetFavoriteLabel={(label) => toggleFavorite(selectedVertiport.id, label)}
                 onClose={() => setSelectedVertiport(null)}
               />
             )}
@@ -745,7 +774,13 @@ const PassengerPage = () => {
   );
 };
 
-const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
+const favoriteLabelText = (label) => {
+  if (label === 'home') return 'Home';
+  if (label === 'work') return 'Work';
+  return 'Saved';
+};
+
+const VertiportDetailCard = ({ vp, isFavorite, favoriteLabel = 'standard', onToggleFavorite, onSetFavoriteLabel, onClose }) => (
   <Paper
     sx={{
       background: 'rgba(2, 6, 23, 0.95)',
@@ -805,6 +840,35 @@ const VertiportDetailCard = ({ vp, isFavorite, onToggleFavorite, onClose }) => (
 
     <Typography sx={{ fontSize: '0.75rem', color: '#64748b', mt: 1.5, lineHeight: 1.6 }}>
       {vp.description}
+    </Typography>
+
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mt: 1.3, flexWrap: 'wrap' }}>
+      {isFavorite && (
+        <Chip
+          label={favoriteLabelText(favoriteLabel)}
+          size="small"
+          sx={{ height: 22, fontSize: '0.68rem', bgcolor: 'rgba(245,158,11,0.16)', color: '#fbbf24' }}
+        />
+      )}
+      <Button
+        size="small"
+        variant={favoriteLabel === 'home' ? 'contained' : 'outlined'}
+        onClick={() => onSetFavoriteLabel('home')}
+        sx={{ textTransform: 'none', borderRadius: '999px', minWidth: 0, px: 1.2, py: 0.3, fontSize: '0.68rem', bgcolor: favoriteLabel === 'home' ? '#1d4ed8' : 'transparent', borderColor: 'rgba(96,165,250,0.26)', color: '#93c5fd' }}
+      >
+        Home
+      </Button>
+      <Button
+        size="small"
+        variant={favoriteLabel === 'work' ? 'contained' : 'outlined'}
+        onClick={() => onSetFavoriteLabel('work')}
+        sx={{ textTransform: 'none', borderRadius: '999px', minWidth: 0, px: 1.2, py: 0.3, fontSize: '0.68rem', bgcolor: favoriteLabel === 'work' ? '#059669' : 'transparent', borderColor: 'rgba(52,211,153,0.26)', color: '#6ee7b7' }}
+      >
+        Work
+      </Button>
+    </Box>
+    <Typography sx={{ fontSize: '0.68rem', color: '#64748b', mt: 0.9, lineHeight: 1.5 }}>
+      Use Home for a usual departure vertiport and Work for a frequent destination. Selecting either one also saves this stop to your favorites.
     </Typography>
 
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 1.5 }}>
@@ -1153,3 +1217,4 @@ const StaticStarRating = ({ averageRating = 0, size = 18 }) => {
 };
 
 export default PassengerPage;
+

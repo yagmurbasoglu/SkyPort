@@ -38,6 +38,7 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import LogoutIcon from '@mui/icons-material/Logout';
 import MapIcon from '@mui/icons-material/Map';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import RouteIcon from '@mui/icons-material/AltRoute';
 import SatelliteAltIcon from '@mui/icons-material/SatelliteAlt';
 import ScienceIcon from '@mui/icons-material/Science';
@@ -54,6 +55,7 @@ import {
 } from 'recharts';
 
 import { useAuth } from '../../context/AuthContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 import { getMapStyle, hasMapboxToken } from '../../utils/mapStyle';
 
 const ISTANBUL_CENTER = [28.9784, 41.0082];
@@ -64,12 +66,21 @@ const ISTANBUL_AIRSPACE_BOUNDS = {
   south: 40.75,
   north: 41.65,
 };
-const DEFAULT_WEIGHTS = { obstacle: 0.35, transport: 0.25, land_use: 0.2, nfz: 0.2 };
+const DEFAULT_WEIGHTS = {
+  obstacle: 0.22,
+  transport: 0.18,
+  land_use: 0.14,
+  nfz: 0.16,
+  traffic_density: 0.16,
+  socioeconomic: 0.14,
+};
 const criteriaLabels = {
   obstacle: 'Obstacle',
   transport: 'Transport',
   land_use: 'Land Use',
   nfz: 'NFZ',
+  traffic_density: 'Traffic Density',
+  socioeconomic: 'Socioeconomic',
 };
 const compareDescriptions = {
   total: 'Higher is better. This is the overall AHP/TOPSIS suitability score across all criteria.',
@@ -77,6 +88,8 @@ const compareDescriptions = {
   transport: 'Higher is better. A high score means stronger road and transport connectivity around the cell.',
   land_use: 'Higher is better. A high score means the surrounding land use is more suitable for vertiport placement.',
   nfz: 'Higher is better. A high score means the cell is farther from NFZ-related risk. It does not mean the cell is inside an NFZ.',
+  traffic_density: 'Higher is better. A high score means official IBB traffic density indicates stronger movement demand around the cell.',
+  socioeconomic: 'Higher is better. A high score means official TUIK district population data indicates stronger demographic demand around the cell.',
 };
 const emptyCollection = { type: 'FeatureCollection', features: [] };
 const EXPERT_ROUTE_WIND_LIMIT = 60;
@@ -324,20 +337,20 @@ const readWeightedValues = (candidate) => {
   return weighted && typeof weighted === 'object' ? weighted : {};
 };
 
-const readPriorityVector = (candidate) => {
+const readPriorityVector = (candidate, fallbackWeights = {}) => {
   const weights = readCriteriaBreakdown(candidate)?.priority_vector;
-  return weights && typeof weights === 'object' ? weights : {};
+  return weights && typeof weights === 'object' ? weights : fallbackWeights;
 };
 
-const criterionImpactRows = (candidate) => {
+const criterionImpactRows = (candidate, fallbackWeights = {}) => {
   const scores = readCriteriaScores(candidate);
   const weighted = readWeightedValues(candidate);
-  const weights = readPriorityVector(candidate);
+  const weights = readPriorityVector(candidate, fallbackWeights);
   return Object.keys(criteriaLabels).map((key) => ({
     key,
     score: Number(scores[key] || 0),
-    weight: Number(weights[key] || 0),
-    impact: Number(weighted[key] || 0),
+    weight: Number(weights[key] ?? fallbackWeights[key] ?? 0),
+    impact: Number(weighted[key] ?? ((scores[key] || 0) * (weights[key] ?? fallbackWeights[key] ?? 0))),
   }));
 };
 
@@ -461,8 +474,10 @@ const fitBoundsSafely = (instance, bounds, options = {}) => {
   }
 };
 
+const readApiError = (error, fallback = 'Request failed.') => getApiErrorMessage(error, fallback);
+
 const ExpertAnalysisPage = () => {
-  const { logout, user } = useAuth();
+  const { logout, updateProfile, user } = useAuth();
   const mapContainer = useRef(null);
   const map = useRef(null);
   const drawOverlay = useRef(null);
@@ -519,16 +534,26 @@ const ExpertAnalysisPage = () => {
   const [exportedReports, setExportedReports] = useState([]);
   const [saveDraftName, setSaveDraftName] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [profileName, setProfileName] = useState(user?.full_name || '');
+  const [profilePassword, setProfilePassword] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState('');
+  const [profileOpen, setProfileOpen] = useState(false);
   const pulseRef = useRef(null);
   const windFrameRef = useRef(null);
 
   const weightTotal = useMemo(() => Object.values(weights).reduce((sum, value) => sum + Number(value || 0), 0), [weights]);
   const canRunAnalysis = ingestJob?.status === 'success' || ingestJob?.status === 'partial_success';
+  const currentAnalysisVersion = analysisResult?.version ?? analysis?.version ?? null;
 
   useEffect(() => {
     if (!analysisResult) return;
     setSaveDraftName((prev) => prev || analysisResult.region_name || regionName || 'Saved Analysis');
   }, [analysisResult, regionName]);
+
+  useEffect(() => {
+    setProfileName(user?.full_name || '');
+  }, [user?.full_name]);
 
   const fetchAirspace = useCallback(async (bounds) => {
     if (!map.current) return;
@@ -551,7 +576,7 @@ const ExpertAnalysisPage = () => {
       mapboxgl.accessToken = token;
     } else {
       mapboxgl.accessToken = 'not-required-for-osm-raster-style';
-      setMapNotice('OpenStreetMap mode is active. Add a Mapbox token later if you want the dark Mapbox basemap.');
+      setMapNotice('OpenStreetMap basemap active.');
     }
 
     const instance = new mapboxgl.Map({
@@ -1238,6 +1263,7 @@ const ExpertAnalysisPage = () => {
       north: 41.06,
     };
     setBbox(centralIstanbul);
+    setWeights(DEFAULT_WEIGHTS);
     if (map.current) {
       map.current.flyTo({
         center: [28.98, 41.02],
@@ -1249,6 +1275,7 @@ const ExpertAnalysisPage = () => {
 
   const clearSelection = useCallback(() => {
     setBbox(null);
+    setWeights(DEFAULT_WEIGHTS);
     setSelectionRect(null);
     selectionRectRef.current = null;
     setIngestJob(null);
@@ -1314,6 +1341,7 @@ const ExpertAnalysisPage = () => {
     }
 
     setBbox({ west, east, south, north });
+    setWeights(DEFAULT_WEIGHTS);
     setSelectionRect(null);
     selectionRectRef.current = null;
     startPoint.current = null;
@@ -1332,15 +1360,20 @@ const ExpertAnalysisPage = () => {
     for (let attempt = 0; attempt < 180; attempt += 1) {
       const response = await axios.get(`/api/geodata/ingest/${jobId}`);
       setIngestJob(response.data);
+      const isPaused = response.data.status === 'paused';
       const percent = response.data.status === 'running'
         ? Math.min(15 + Math.round((attempt / 180) * 70), 92)
-        : 100;
+        : isPaused
+          ? Math.min(15 + Math.round((attempt / 180) * 70), 88)
+          : 100;
       updateProgress({
         phase: 'Geodata Ingest',
         percent,
         message: response.data.status === 'running'
           ? 'OSM, H3, NFZ and controlled airspace layers are being prepared.'
-          : `Geodata ingest ${response.data.status}.`,
+          : isPaused
+            ? (response.data.message || 'Geodata ingest is paused. Resume when you are ready.')
+            : `Geodata ingest ${response.data.status}.`,
       });
       if (['success', 'partial_success', 'failed'].includes(response.data.status)) return response.data;
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -1352,15 +1385,20 @@ const ExpertAnalysisPage = () => {
     for (let attempt = 0; attempt < 120; attempt += 1) {
       const response = await axios.get(`/api/analysis/${analysisId}/status`);
       setAnalysis(response.data);
+      const isPaused = response.data.status === 'paused';
       const percent = response.data.status === 'running'
         ? Math.min(72 + Math.round((attempt / 120) * 22), 96)
-        : 100;
+        : isPaused
+          ? Math.min(72 + Math.round((attempt / 120) * 22), 92)
+          : 100;
       updateProgress({
         phase: 'AHP/TOPSIS Analysis',
         percent,
         message: response.data.status === 'running'
           ? 'Suitability scores and heatmap polygons are being calculated.'
-          : `Analysis ${response.data.status}.`,
+          : isPaused
+            ? (response.data.message || 'Analysis is paused. Resume to continue scoring.')
+            : `Analysis ${response.data.status}.`,
       });
       if (['completed', 'failed'].includes(response.data.status)) return response.data;
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -1382,7 +1420,7 @@ const ExpertAnalysisPage = () => {
         fitBoundsSafely(map.current, bounds, { padding: 120, duration: 800, pitch: 45, bearing: -15, maxZoom: 14.5 });
       }
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setSelectedCellLoading(false);
     }
@@ -1447,6 +1485,7 @@ const ExpertAnalysisPage = () => {
       const created = existingAnalysisId
         ? await axios.post(`/api/analysis/${existingAnalysisId}/recalculate`, {
           criteria_weights: normalizedWeights,
+          expected_version: currentAnalysisVersion,
         })
         : await axios.post('/api/analysis', {
           geodata_job_id: job.job_id,
@@ -1473,7 +1512,7 @@ const ExpertAnalysisPage = () => {
         message: 'Geodata ingest and AHP/TOPSIS analysis completed.',
       });
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setBusy('');
     }
@@ -1520,7 +1559,7 @@ const ExpertAnalysisPage = () => {
       if (err.message === 'Network Error' || !err.response) {
         setError('data service is unavailable. check your internet connection');
       } else {
-        setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+        setError(readApiError(err));
       }
     } finally {
       if (busy !== 'analysis') setBusy('');
@@ -1537,7 +1576,7 @@ const ExpertAnalysisPage = () => {
       const response = await axios.post('/api/analysis/compare', { analysis_id: analysisResult.analysis_id, cell_indexes: cellIndexes });
       setCompareResult(response.data);
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setBusy('');
     }
@@ -1556,7 +1595,7 @@ const ExpertAnalysisPage = () => {
       setManualCompareResult(response.data);
       setCompareSelectionMode(false);
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setBusy('');
     }
@@ -1605,6 +1644,7 @@ const ExpertAnalysisPage = () => {
       const center = map.current?.getCenter();
       const payload = {
         name: saveDraftName.trim(),
+        expected_version: currentAnalysisVersion,
         map_view: center ? {
           center: [Number(center.lng.toFixed(6)), Number(center.lat.toFixed(6))],
           zoom: Number((map.current?.getZoom() || ISTANBUL_ZOOM).toFixed(2)),
@@ -1618,11 +1658,11 @@ const ExpertAnalysisPage = () => {
       setSuccessMessage('Analysis successfully saved to your profile.');
       setActiveWorkspace('profile');
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setBusy('');
     }
-  }, [analysisResult, bbox, loadSavedHistory, saveDraftName]);
+  }, [analysisResult, bbox, currentAnalysisVersion, loadSavedHistory, saveDraftName]);
 
   const downloadAnalysisExport = useCallback(async (format) => {
     if (!analysisResult?.analysis_id) return;
@@ -1641,7 +1681,7 @@ const ExpertAnalysisPage = () => {
       setSuccessMessage('Report successfully exported.');
       setActiveWorkspace('exports');
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setBusy('');
     }
@@ -1654,7 +1694,7 @@ const ExpertAnalysisPage = () => {
     try {
       await downloadReportFile(reportItem.download_url, reportItem.file_name);
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setBusy('');
     }
@@ -1670,7 +1710,7 @@ const ExpertAnalysisPage = () => {
       await loadExportedReports();
       setSuccessMessage(response.data?.message || 'Report deleted successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setBusy('');
     }
@@ -1686,7 +1726,7 @@ const ExpertAnalysisPage = () => {
       await loadSavedHistory();
       setSuccessMessage(response.data?.message || 'Saved analysis removed from profile.');
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setBusy('');
     }
@@ -1706,9 +1746,10 @@ const ExpertAnalysisPage = () => {
       setAnalysis({
         analysis_id: historyItem.analysis_id,
         status: resultResponse.data.status,
+        version: resultResponse.data.version ?? historyItem.version ?? null,
       });
       if (historyItem?.saved_payload?.criteria_weights) {
-        setWeights(historyItem.saved_payload.criteria_weights);
+        setWeights((prev) => ({ ...DEFAULT_WEIGHTS, ...prev, ...historyItem.saved_payload.criteria_weights }));
       }
       if (historyItem?.saved_payload?.selected_bounds) {
         setBbox(historyItem.saved_payload.selected_bounds);
@@ -1728,7 +1769,7 @@ const ExpertAnalysisPage = () => {
         fitBoundsSafely(map.current, bounds, { padding: 72, duration: 900 });
       }
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setBusy('');
     }
@@ -1741,6 +1782,110 @@ const ExpertAnalysisPage = () => {
   useEffect(() => {
     loadExportedReports();
   }, [loadExportedReports]);
+
+  const pauseCurrentIngest = useCallback(async () => {
+    if (!ingestJob?.job_id) return;
+    setBusy('ingest-control');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const response = await axios.post(`/api/geodata/ingest/${ingestJob.job_id}/pause`);
+      setIngestJob(response.data);
+      updateProgress({
+        phase: 'Geodata Ingest',
+        percent: Math.max(jobProgress.percent || 22, 32),
+        message: response.data?.message || 'Geodata ingest paused.',
+      });
+      setSuccessMessage(response.data?.message || 'Geodata ingest paused.');
+    } catch (err) {
+      setError(readApiError(err));
+    } finally {
+      setBusy('');
+    }
+  }, [ingestJob, jobProgress.percent, updateProgress]);
+
+  const resumeCurrentIngest = useCallback(async () => {
+    if (!ingestJob?.job_id) return;
+    setBusy('ingest-control');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const response = await axios.post(`/api/geodata/ingest/${ingestJob.job_id}/resume`);
+      setIngestJob(response.data);
+      updateProgress({
+        phase: 'Geodata Ingest',
+        percent: Math.max(jobProgress.percent || 32, 36),
+        message: response.data?.message || 'Geodata ingest resumed.',
+      });
+      setSuccessMessage(response.data?.message || 'Geodata ingest resumed.');
+    } catch (err) {
+      setError(readApiError(err));
+    } finally {
+      setBusy('');
+    }
+  }, [ingestJob, jobProgress.percent, updateProgress]);
+
+  const pauseCurrentAnalysis = useCallback(async () => {
+    const analysisId = analysis?.analysis_id || analysisResult?.analysis_id;
+    if (!analysisId) return;
+    setBusy('analysis-control');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const response = await axios.post(`/api/analysis/${analysisId}/pause`);
+      setAnalysis((prev) => ({ ...(prev || {}), ...response.data, analysis_id: analysisId }));
+      updateProgress({
+        phase: 'AHP/TOPSIS Analysis',
+        percent: Math.max(jobProgress.percent || 74, 78),
+        message: response.data?.message || 'Analysis paused.',
+      });
+      setSuccessMessage(response.data?.message || 'Analysis paused.');
+    } catch (err) {
+      setError(readApiError(err));
+    } finally {
+      setBusy('');
+    }
+  }, [analysis, analysisResult, jobProgress.percent, updateProgress]);
+
+  const resumeCurrentAnalysis = useCallback(async () => {
+    const analysisId = analysis?.analysis_id || analysisResult?.analysis_id;
+    if (!analysisId) return;
+    setBusy('analysis-control');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const response = await axios.post(`/api/analysis/${analysisId}/resume`);
+      setAnalysis((prev) => ({ ...(prev || {}), ...response.data, analysis_id: analysisId }));
+      updateProgress({
+        phase: 'AHP/TOPSIS Analysis',
+        percent: Math.max(jobProgress.percent || 78, 82),
+        message: response.data?.message || 'Analysis resumed.',
+      });
+      setSuccessMessage(response.data?.message || 'Analysis resumed.');
+    } catch (err) {
+      setError(readApiError(err));
+    } finally {
+      setBusy('');
+    }
+  }, [analysis, analysisResult, jobProgress.percent, updateProgress]);
+
+  const saveExpertProfile = useCallback(async () => {
+    setProfileSaving(true);
+    setError('');
+    setProfileMessage('');
+    try {
+      await updateProfile({
+        full_name: profileName,
+        password: profilePassword || undefined,
+      });
+      setProfilePassword('');
+      setProfileMessage('Profile updated successfully.');
+    } catch (err) {
+      setError(readApiError(err));
+    } finally {
+      setProfileSaving(false);
+    }
+  }, [profileName, profilePassword, updateProfile]);
 
   const runExpertRouteSafety = async () => {
     setActiveWorkspace('route');
@@ -1784,7 +1929,7 @@ const ExpertAnalysisPage = () => {
       setRouteResult(response.data);
       setRouteLayer(response.data);
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(readApiError(err));
     } finally {
       setJobProgress({
         open: false,
@@ -1940,7 +2085,25 @@ const ExpertAnalysisPage = () => {
     <Box sx={{ height: '100vh', width: '100%', bgcolor: '#020617', overflow: 'hidden', position: 'relative' }}>
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
       {mapNotice && (
-        <Alert severity="info" sx={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 21, maxWidth: 440, fontSize: '0.76rem', py: 0.5 }}>
+        <Alert
+          severity={mapNotice.startsWith('Map service warning') ? 'warning' : 'info'}
+          icon={false}
+          sx={{
+            position: 'absolute',
+            bottom: 14,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 21,
+            maxWidth: 360,
+            fontSize: '0.68rem',
+            py: 0.25,
+            px: 1,
+            color: '#cbd5e1',
+            bgcolor: 'rgba(2,6,23,0.78)',
+            border: '1px solid rgba(148,163,184,0.22)',
+            '& .MuiAlert-message': { p: 0 },
+          }}
+        >
           {mapNotice}
         </Alert>
       )}
@@ -1969,6 +2132,11 @@ const ExpertAnalysisPage = () => {
           <Tooltip title="Reset to Istanbul">
             <IconButton onClick={() => map.current?.flyTo({ center: ISTANBUL_CENTER, zoom: ISTANBUL_ZOOM, duration: 900 })} sx={{ color: '#94a3b8' }}>
               <MyLocationIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Profile">
+            <IconButton onClick={() => setProfileOpen(true)} sx={{ color: '#93c5fd' }}>
+              <PersonOutlineIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Button startIcon={<LogoutIcon />} onClick={handleLogout} sx={{ color: '#fca5a5', borderRadius: '8px', textTransform: 'none' }}>
@@ -2068,6 +2236,21 @@ const ExpertAnalysisPage = () => {
                   warnings={ingestJob.warnings}
                 />
               )}
+              {ingestJob && ['running', 'paused'].includes(ingestJob.status) && (
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={ingestJob.status === 'paused' ? resumeCurrentIngest : pauseCurrentIngest}
+                    disabled={busy === 'ingest-control'}
+                    sx={{ color: '#e2e8f0', borderColor: 'rgba(226,232,240,0.18)', borderRadius: '8px', textTransform: 'none' }}
+                  >
+                    {busy === 'ingest-control'
+                      ? <CircularProgress size={18} color="inherit" />
+                      : ingestJob.status === 'paused' ? 'Resume Ingest' : 'Pause Ingest'}
+                  </Button>
+                </Stack>
+              )}
               {Number(ingestJob?.layer_counts?.h3_cells ?? 0) < 3 && ingestJob && (
                 <Alert severity="info" sx={{ fontSize: '0.76rem' }}>
                   Select a larger area for a more sensitive TOPSIS comparison. Single-cell results use a weighted MCDM fallback.
@@ -2096,7 +2279,7 @@ const ExpertAnalysisPage = () => {
                   <ScienceIcon fontSize="small" /> AHP/TOPSIS Weights
                 </Typography>
                 <Typography sx={{ color: '#94a3b8', fontSize: '0.76rem', mt: 0.5 }}>
-                  Tune criteria balance for obstacle, transport, land use, and NFZ scoring.
+                  Tune the six-criterion balance across obstacle, transport, land use, NFZ, traffic density, and socioeconomic potential.
                 </Typography>
               </Box>
               <Typography sx={{ color: '#94a3b8', fontSize: '0.76rem' }}>
@@ -2125,10 +2308,26 @@ const ExpertAnalysisPage = () => {
                   status={analysis.status}
                   rows={[
                     ['Analysis ID', analysis.analysis_id],
+                    ['Version', analysis.version ?? 'n/a'],
                     ['Started', analysis.started_at ? new Date(analysis.started_at).toLocaleTimeString() : 'pending'],
                     ['Completed', analysis.completed_at ? new Date(analysis.completed_at).toLocaleTimeString() : 'pending'],
                   ]}
                 />
+              )}
+              {analysis && ['running', 'paused'].includes(analysis.status) && (
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={analysis.status === 'paused' ? resumeCurrentAnalysis : pauseCurrentAnalysis}
+                    disabled={busy === 'analysis-control'}
+                    sx={{ color: '#e2e8f0', borderColor: 'rgba(226,232,240,0.18)', borderRadius: '8px', textTransform: 'none' }}
+                  >
+                    {busy === 'analysis-control'
+                      ? <CircularProgress size={18} color="inherit" />
+                      : analysis.status === 'paused' ? 'Resume Analysis' : 'Pause Analysis'}
+                  </Button>
+                </Stack>
               )}
             </Stack>
           </Paper>
@@ -2335,7 +2534,7 @@ const ExpertAnalysisPage = () => {
                         <Typography sx={{ color: '#cbd5e1', fontSize: '0.74rem', fontWeight: 800 }}>
                           Criterion impact on this score
                         </Typography>
-                        {criterionImpactRows(selectedCellDetail)
+                        {criterionImpactRows(selectedCellDetail, analysisResult?.mcdm?.priority_vector || weights)
                           .sort((a, b) => b.impact - a.impact)
                           .map((row) => (
                             <Box key={row.key} sx={{ display: 'flex', flexDirection: 'column', gap: 0.3, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: '8px', px: 1, py: 0.8 }}>
@@ -2358,12 +2557,21 @@ const ExpertAnalysisPage = () => {
                             </Box>
                           ))}
                         {readCriteriaBreakdown(selectedCellDetail)?.weighted_priority_score !== undefined && (
-                          <Typography sx={{ color: '#94a3b8', fontSize: '0.68rem', lineHeight: 1.5 }}>
-                            Weighted priority score: {(Number(readCriteriaBreakdown(selectedCellDetail).weighted_priority_score) * 100).toFixed(1)}%
+                          <Box>
+                            <Typography sx={{ color: '#94a3b8', fontSize: '0.68rem', lineHeight: 1.5 }}>
+                              Weighted priority score: {(Number(readCriteriaBreakdown(selectedCellDetail).weighted_priority_score) * 100).toFixed(1)}%
+                              {readCriteriaBreakdown(selectedCellDetail)?.topsis_closeness !== undefined
+                                ? ` • TOPSIS closeness: ${(Number(readCriteriaBreakdown(selectedCellDetail).topsis_closeness) * 100).toFixed(1)}%`
+                                : ''}
+                            </Typography>
                             {readCriteriaBreakdown(selectedCellDetail)?.topsis_closeness !== undefined
-                              ? ` • TOPSIS closeness: ${(Number(readCriteriaBreakdown(selectedCellDetail).topsis_closeness) * 100).toFixed(1)}%`
-                              : ''}
-                          </Typography>
+                              && Number(readCriteriaBreakdown(selectedCellDetail).topsis_closeness) <= 0.005
+                              && !readCriteriaBreakdown(selectedCellDetail)?.hard_constraint_violation && (
+                                <Typography sx={{ color: '#fbbf24', fontSize: '0.66rem', lineHeight: 1.45, mt: 0.4 }}>
+                                  TOPSIS is relative to the compared cells. 0% means this cell is currently the least preferred alternative, not missing data.
+                                </Typography>
+                              )}
+                          </Box>
                         )}
                       </Stack>
                     )}
@@ -2565,9 +2773,9 @@ const ExpertAnalysisPage = () => {
                     Export Current Analysis
                   </Typography>
                   <Typography sx={{ color: '#94a3b8', fontSize: '0.72rem', lineHeight: 1.5, mb: 1 }}>
-                    Generate a styled PDF summary for the current analysis. Exported files stay listed here for later download.
+                    Generate PDF, CSV, or GeoJSON files for the current analysis. Exported files stay listed here for later download.
                   </Typography>
-                  <Stack direction="row" spacing={1}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap">
                     <Button
                       variant="outlined"
                       onClick={() => downloadAnalysisExport('pdf')}
@@ -2575,6 +2783,22 @@ const ExpertAnalysisPage = () => {
                       sx={{ color: '#f8fafc', borderColor: 'rgba(248,250,252,0.18)', borderRadius: '8px', textTransform: 'none' }}
                     >
                       {busy === 'export' ? <CircularProgress size={18} color="inherit" /> : 'Export PDF'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => downloadAnalysisExport('csv')}
+                      disabled={busy === 'export'}
+                      sx={{ color: '#c4b5fd', borderColor: 'rgba(196,181,253,0.3)', borderRadius: '8px', textTransform: 'none' }}
+                    >
+                      {busy === 'export' ? <CircularProgress size={18} color="inherit" /> : 'Export CSV'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => downloadAnalysisExport('geojson')}
+                      disabled={busy === 'export'}
+                      sx={{ color: '#67e8f9', borderColor: 'rgba(103,232,249,0.28)', borderRadius: '8px', textTransform: 'none' }}
+                    >
+                      {busy === 'export' ? <CircularProgress size={18} color="inherit" /> : 'Export GeoJSON'}
                     </Button>
                     <Button
                       variant="outlined"
@@ -2656,6 +2880,53 @@ const ExpertAnalysisPage = () => {
           </Paper>
         </Box>
       </Fade>
+
+      <Modal open={profileOpen} onClose={() => setProfileOpen(false)}>
+        <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 2 }}>
+          <Paper sx={{ width: 360, background: 'rgba(2, 6, 23, 0.96)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', p: 2.2 }}>
+            <Stack spacing={1.4}>
+              <Typography sx={{ color: '#e2e8f0', fontWeight: 800 }}>Profile Settings</Typography>
+              <Typography sx={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                {user?.email} · {user?.role}
+              </Typography>
+              {!!profileMessage && <Alert severity="success" sx={{ fontSize: '0.75rem' }}>{profileMessage}</Alert>}
+              <TextField
+                fullWidth
+                label="Full Name"
+                value={profileName}
+                onChange={(event) => setProfileName(event.target.value)}
+                sx={fieldSx}
+              />
+              <TextField
+                fullWidth
+                label="New Password"
+                type="password"
+                value={profilePassword}
+                onChange={(event) => setProfilePassword(event.target.value)}
+                helperText="Leave empty to keep current password."
+                sx={fieldSx}
+              />
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="contained"
+                  onClick={saveExpertProfile}
+                  disabled={profileSaving}
+                  sx={{ bgcolor: '#b65f70', textTransform: 'none', borderRadius: '10px', '&:hover': { bgcolor: '#9a4c5a' } }}
+                >
+                  {profileSaving ? <CircularProgress size={18} color="inherit" /> : 'Save'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => setProfileOpen(false)}
+                  sx={{ color: '#94a3b8', borderColor: 'rgba(148,163,184,0.24)', textTransform: 'none', borderRadius: '10px' }}
+                >
+                  Close
+                </Button>
+              </Stack>
+            </Stack>
+          </Paper>
+        </Box>
+      </Modal>
 
       <Stack sx={{ position: 'absolute', right: 28, top: 108, zIndex: 22, alignItems: 'center' }} spacing={0.9}>
         <Tooltip title={mapControlsOpen ? 'Close map layers' : 'Open map layers'} placement="left">
@@ -3003,3 +3274,4 @@ const Metric = ({ label, value }) => (
 );
 
 export default ExpertAnalysisPage;
+

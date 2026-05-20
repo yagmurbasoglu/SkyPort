@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Chip, Divider, Paper, Typography } from '@mui/material';
+import { Box, Divider, Paper, Typography } from '@mui/material';
 import FlightIcon from '@mui/icons-material/Flight';
 import QrCode2Icon from '@mui/icons-material/QrCode2';
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
@@ -42,26 +42,41 @@ const BoardingPassPage = () => {
           boxShadow: '0 28px 80px rgba(0,0,0,0.55)',
         }}
       >
-        <Box sx={{ p: 3, background: 'linear-gradient(135deg, #e17b8f, #be123c)', position: 'relative' }}>
-          <Chip
-            icon={<QrCode2Icon sx={{ color: '#fff !important' }} />}
-            label="Live Boarding Pass"
-            size="small"
-            sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: 700 }}
-          />
+        <Box sx={{ p: 3.2, background: 'linear-gradient(135deg, #e17b8f, #be123c)', position: 'relative' }}>
+          <Box
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 0.8,
+              px: 1.15,
+              py: 0.7,
+              borderRadius: '999px',
+              bgcolor: 'rgba(255,255,255,0.12)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              color: '#fff',
+              fontSize: '0.76rem',
+              fontWeight: 800,
+              lineHeight: 1.1,
+            }}
+          >
+            <QrCode2Icon sx={{ fontSize: 15, color: '#fff' }} />
+            <Box component="span">Live Boarding Pass</Box>
+          </Box>
           <Typography sx={{ color: '#fff', fontSize: '1.55rem', fontWeight: 900, mt: 1.2 }}>
             {flight}
           </Typography>
           <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.8rem', mt: 0.4 }}>
-            Gate {gate} • Issued {issuedAt}
+            Gate {gate} - Issued {issuedAt}
           </Typography>
           <FlightIcon sx={{ position: 'absolute', right: 18, bottom: -10, fontSize: 84, color: 'rgba(255,255,255,0.08)', transform: 'rotate(45deg)' }} />
         </Box>
 
-        <Box sx={{ px: 3, pt: 3, pb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+        <Box sx={{ px: 3.2, pt: 3.2, pb: 2.4 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 56px minmax(0, 1fr)', alignItems: 'center', gap: 1.4 }}>
             <RouteColumn label="From" value={from} align="left" />
-            <FlightIcon sx={{ color: '#e17b8f', opacity: 0.55, transform: 'rotate(90deg)', flexShrink: 0 }} />
+            <Box sx={{ display: 'grid', placeItems: 'center' }}>
+              <FlightIcon sx={{ color: '#e17b8f', opacity: 0.55, transform: 'rotate(90deg)', flexShrink: 0, fontSize: 28 }} />
+            </Box>
             <RouteColumn label="To" value={to} align="right" />
           </Box>
 
@@ -70,7 +85,7 @@ const BoardingPassPage = () => {
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1.2 }}>
             <MetricCard label="Distance" value={`${distance} km`} />
             <MetricCard label="Duration" value={`${duration} min`} />
-            <MetricCard label="Price" value={`₺${price}`} />
+            <MetricCard label="Price" value={`TL ${price}`} />
           </Box>
 
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.2, mt: 1.2 }}>
@@ -83,7 +98,7 @@ const BoardingPassPage = () => {
           <Box sx={{ mt: 2.2, display: 'flex', alignItems: 'center', gap: 1.2, p: 1.3, borderRadius: '12px', bgcolor: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.2)' }}>
             <WorkspacePremiumIcon sx={{ color: '#4ade80', fontSize: 18 }} />
             <Typography sx={{ color: '#86efac', fontSize: '0.76rem', fontWeight: 700 }}>
-              Verified live passenger card • passenger limit is 2
+              Verified live passenger card - passenger limit is 2
             </Typography>
           </Box>
         </Box>
@@ -93,11 +108,25 @@ const BoardingPassPage = () => {
 };
 
 const RouteColumn = ({ label, value, align }) => (
-  <Box sx={{ flex: 1, minWidth: 0, textAlign: align }}>
-    <Typography sx={{ fontSize: '0.64rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+  <Box sx={{ minWidth: 0, textAlign: align }}>
+    <Typography sx={{ fontSize: '0.64rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', lineHeight: 1.2 }}>
       {label}
     </Typography>
-    <Typography sx={{ fontSize: '0.92rem', color: '#e2e8f0', fontWeight: 800 }} noWrap>
+    <Typography
+      sx={{
+        fontSize: '0.9rem',
+        color: '#e2e8f0',
+        fontWeight: 800,
+        lineHeight: 1.24,
+        mt: 0.38,
+        minHeight: 44,
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden',
+        overflowWrap: 'anywhere',
+      }}
+    >
       {value}
     </Typography>
   </Box>

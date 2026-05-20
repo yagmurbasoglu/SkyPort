@@ -15,6 +15,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 import axios from 'axios';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // ─── Flight number & gate helpers ─────────────────────────────────────────────
 const GATES = ['A1','A2','A3','B1','B2','B3','C1','C2','C4','D2','D5','D8'];
@@ -215,6 +216,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
   const [showBoardingPass, setShowBoardingPass] = useState(false);
   const [flightNo, setFlightNo] = useState('');
   const [gate, setGate] = useState('');
+  const [issuedAtLabel, setIssuedAtLabel] = useState('');
   const [boardingPassUrl, setBoardingPassUrl] = useState('');
   const [departureDate, setDepartureDate] = useState(() => toDateInputValue(new Date()));
   const [departureTime, setDepartureTime] = useState('');
@@ -222,7 +224,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
   const [occupiedSlots, setOccupiedSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
-  const ticketRef = useRef(null);
+  const printTicketRef = useRef(null);
 
   useEffect(() => {
     if (!departureDate || !isDbVertiportId(from?.id)) {
@@ -325,7 +327,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
     } catch (err) {
       setRoute(null);
       onClearRoute();
-      setError(err.response?.data?.message || err.response?.data?.detail || err.message);
+      setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -384,6 +386,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
     }
     setFlightNo(fn);
     setGate(g);
+    setIssuedAtLabel(issuedAt);
     const livePassUrl = buildBoardingPassUrl({
       flightNo: fn,
       gate: g,
@@ -429,6 +432,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
 
   const fromName = route?.fromVertiport?.name || from?.name || '';
   const toName   = route?.toVertiport?.name   || to?.name   || '';
+  const currentIssuedAt = issuedAtLabel || new Date().toLocaleString('tr-TR');
   const usesLocalhostPass = boardingPassUrl.includes('localhost') || boardingPassUrl.includes('127.0.0.1');
   const qrData   = encodeURIComponent(boardingPassUrl || buildBoardingPassUrl({
     flightNo,
@@ -436,7 +440,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
     route,
     fromName,
     toName,
-    issuedAt: new Date().toLocaleString('tr-TR'),
+    issuedAt: currentIssuedAt,
     departureDate,
     departureTime,
     passengerCount,
@@ -444,22 +448,26 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
   const qrUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}&bgcolor=0f172a&color=e17b8f&margin=8`;
 
   const handleDownloadPDF = async () => {
-    if (!ticketRef.current) return;
+    if (!printTicketRef.current) return;
     try {
-      const canvas = await html2canvas(ticketRef.current, {
-        scale: 2,
+      const canvas = await html2canvas(printTicketRef.current, {
+        scale: 2.4,
         useCORS: true,
-        backgroundColor: '#0f172a',
+        backgroundColor: null,
       });
       const imgData = canvas.toDataURL('image/png');
-      const pdfWidth = 85;
-      const pdfHeight = Math.max(140, (canvas.height * pdfWidth) / canvas.width);
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
-        format: [pdfWidth, pdfHeight],
+        format: 'a4',
       });
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const renderWidth = pageWidth - (margin * 2);
+      const renderHeight = Math.min(pageHeight - (margin * 2), (canvas.height * renderWidth) / canvas.width);
+      const offsetY = (pageHeight - renderHeight) / 2;
+      pdf.addImage(imgData, 'PNG', margin, offsetY, renderWidth, renderHeight);
       pdf.save(`SkyPort-${flightNo}-Ticket.pdf`);
     } catch (err) {
       console.error('PDF export failed:', err);
@@ -715,6 +723,9 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
                     <MenuItem key={count} value={count}>{count}</MenuItem>
                   ))}
                 </TextField>
+                <Typography sx={{ mt: 1, color: '#94a3b8', fontSize: '0.64rem', lineHeight: 1.45 }}>
+                  Simulation scheduling only. No payment or commercial ticketing is processed.
+                </Typography>
               </Box>
             )}
 
@@ -810,7 +821,7 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
       <Modal open={showBoardingPass} onClose={() => setShowBoardingPass(false)} closeAfterTransition BackdropComponent={Backdrop} BackdropProps={{ timeout: 500, sx: { backdropFilter: 'blur(8px)' } }}>
         <Fade in={showBoardingPass}>
           <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', outline: 'none' }}>
-            <Box ref={ticketRef} sx={{ width: 320, background: '#0f172a', border: '1px solid rgba(225,123,143,0.3)', borderRadius: '24px', boxShadow: '0 24px 64px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
+            <Box sx={{ width: 320, background: '#0f172a', border: '1px solid rgba(225,123,143,0.3)', borderRadius: '24px', boxShadow: '0 24px 64px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
               {/* Card header */}
               <Box sx={{ background: 'linear-gradient(135deg,#e17b8f,#be123c)', p: 3, position: 'relative' }}>
                 <Typography sx={{ color: '#fff', fontSize: '0.65rem', fontWeight: 600, opacity: 0.8, letterSpacing: '0.12em', textTransform: 'uppercase' }}>SkyPort Boarding Pass</Typography>
@@ -868,6 +879,103 @@ const RoutePlanner = ({ vertiports = [], onRouteCalculated, onClearRoute, onFlig
                     This QR currently points to localhost. For phone access, open the app from your PC IP or set `REACT_APP_PUBLIC_APP_URL`.
                   </Typography>
                 )}
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                position: 'fixed',
+                left: -10000,
+                top: 0,
+                pointerEvents: 'none',
+                opacity: 0,
+              }}
+            >
+              <Box
+                ref={printTicketRef}
+                sx={{
+                  width: 820,
+                  minHeight: 1180,
+                  display: 'grid',
+                  placeItems: 'center',
+                  px: 5,
+                  py: 6,
+                  background:
+                    'radial-gradient(circle at top, rgba(225,123,143,0.18), transparent 32%), linear-gradient(180deg, #020617 0%, #0f172a 100%)',
+                }}
+              >
+                <Box
+                  sx={{
+                    width: '100%',
+                    maxWidth: 520,
+                    overflow: 'hidden',
+                    borderRadius: '28px',
+                    border: '1px solid rgba(225,123,143,0.24)',
+                    background: 'rgba(15, 23, 42, 0.96)',
+                    boxShadow: '0 28px 80px rgba(0,0,0,0.55)',
+                  }}
+                >
+                  <Box sx={{ p: 3.2, background: 'linear-gradient(135deg, #e17b8f, #be123c)', position: 'relative' }}>
+                    <Box
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.8,
+                        px: 1.25,
+                        py: 0.75,
+                        borderRadius: '999px',
+                        bgcolor: 'rgba(255,255,255,0.12)',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        color: '#fff',
+                        fontSize: '0.78rem',
+                        fontWeight: 800,
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      <DownloadIcon sx={{ fontSize: 15, color: '#fff' }} />
+                      <Box component="span">Passenger Boarding Pass</Box>
+                    </Box>
+                    <Typography sx={{ color: '#fff', fontSize: '2rem', fontWeight: 900, mt: 1.3 }}>
+                      {flightNo}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.84)', fontSize: '0.92rem', mt: 0.45 }}>
+                      Gate {gate} - Issued {currentIssuedAt}
+                    </Typography>
+                    <FlightIcon sx={{ position: 'absolute', right: 18, bottom: -10, fontSize: 96, color: 'rgba(255,255,255,0.08)', transform: 'rotate(45deg)' }} />
+                  </Box>
+
+                  <Box sx={{ px: 3.2, pt: 3.2, pb: 3.2 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 56px minmax(0, 1fr)', alignItems: 'center', gap: 1.4 }}>
+                      <PrintableRouteColumn label="From" value={fromName || 'Origin'} align="left" />
+                      <Box sx={{ display: 'grid', placeItems: 'center' }}>
+                        <FlightIcon sx={{ color: '#e17b8f', opacity: 0.55, transform: 'rotate(90deg)', flexShrink: 0, fontSize: 28 }} />
+                      </Box>
+                      <PrintableRouteColumn label="To" value={toName || 'Destination'} align="right" />
+                    </Box>
+
+                    <Divider sx={{ my: 2.5, borderColor: 'rgba(255,255,255,0.07)', borderStyle: 'dashed' }} />
+
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1.2 }}>
+                      <PrintableMetricCard label="Distance" value={`${route?.distance_km ?? '-'} km`} />
+                      <PrintableMetricCard label="Duration" value={`${route?.duration_min ?? '-'} min`} />
+                      <PrintableMetricCard label="Price" value={`TL ${route?.price_tl ?? '-'}`} />
+                    </Box>
+
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.2, mt: 1.2 }}>
+                      <PrintableMetricCard label="Date" value={departureDate || '-'} />
+                      <PrintableMetricCard label="Time" value={departureTime || '-'} />
+                      <PrintableMetricCard label="Passengers" value={String(passengerCount)} />
+                      <PrintableMetricCard label="Booking Rule" value={`Max ${MAX_PASSENGERS} pax`} />
+                    </Box>
+
+                    <Box sx={{ mt: 2.2, display: 'flex', alignItems: 'center', gap: 1.2, p: 1.3, borderRadius: '12px', bgcolor: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                      <WorkspacePremiumIcon sx={{ color: '#4ade80', fontSize: 18 }} />
+                      <Typography sx={{ color: '#86efac', fontSize: '0.82rem', fontWeight: 700 }}>
+                        Verified live passenger card - passenger limit is 2
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
               </Box>
             </Box>
 
@@ -972,6 +1080,42 @@ const TicketMetric = ({ label, value }) => (
   </Box>
 );
 
+const PrintableRouteColumn = ({ label, value, align }) => (
+  <Box sx={{ minWidth: 0, textAlign: align }}>
+    <Typography sx={{ fontSize: '0.68rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', lineHeight: 1.2 }}>
+      {label}
+    </Typography>
+    <Typography
+      sx={{
+        fontSize: '0.95rem',
+        color: '#e2e8f0',
+        fontWeight: 800,
+        lineHeight: 1.24,
+        mt: 0.38,
+        minHeight: 46,
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden',
+        overflowWrap: 'anywhere',
+      }}
+    >
+      {value}
+    </Typography>
+  </Box>
+);
+
+const PrintableMetricCard = ({ label, value }) => (
+  <Box sx={{ borderRadius: '12px', p: 1.15, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'center' }}>
+    <Typography sx={{ fontSize: '0.64rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+      {label}
+    </Typography>
+    <Typography sx={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 800, mt: 0.3 }}>
+      {value}
+    </Typography>
+  </Box>
+);
+
 const formatWind = (value) => (value === null || value === undefined ? 'n/a' : `${Number(value).toFixed(1)} km/h`);
 
 const WeatherMetric = ({ label, value }) => (
@@ -982,3 +1126,4 @@ const WeatherMetric = ({ label, value }) => (
 );
 
 export default RoutePlanner;
+
